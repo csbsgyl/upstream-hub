@@ -144,6 +144,15 @@ func Load(path string) (*Config, error) {
 	_ = v.BindEnv("auth.username", "ADMIN_USERNAME")
 	_ = v.BindEnv("auth.password", "ADMIN_PASSWORD")
 	_ = v.BindEnv("auth.tokenSecret", "AUTH_TOKEN_SECRET")
+	// Viper 坑：AutomaticEnv 只对已通过 SetDefault / BindEnv / 配置文件注册过的 key 生效；
+	// 数据库的 user/password/name 没有合理的默认值（拒绝写"change-me"作默认），
+	// 因此显式 BindEnv 以确保从环境变量读取。
+	_ = v.BindEnv("database.host", "UPSTREAMHUB_DATABASE_HOST")
+	_ = v.BindEnv("database.port", "UPSTREAMHUB_DATABASE_PORT")
+	_ = v.BindEnv("database.user", "UPSTREAMHUB_DATABASE_USER")
+	_ = v.BindEnv("database.password", "UPSTREAMHUB_DATABASE_PASSWORD")
+	_ = v.BindEnv("database.name", "UPSTREAMHUB_DATABASE_NAME")
+	_ = v.BindEnv("database.sslMode", "UPSTREAMHUB_DATABASE_SSLMODE")
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {

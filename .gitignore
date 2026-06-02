@@ -49,8 +49,16 @@ postgres-data/
 # Claude / AI tooling
 .claude/
 CLAUDE.md
-4
+
+# Demo overlay —— 本地演示沙箱，永远不进 git
+Dockerfile.demo
+docker-compose.demo.yml
+Caddyfile.demo
+.env.demo
+deploy-demo.sh
+backend/cmd/seed-demo/
+
 # Frontend build info
 frontend/tsconfig.tsbuildinfo
 
-docs/ 
+docs/
