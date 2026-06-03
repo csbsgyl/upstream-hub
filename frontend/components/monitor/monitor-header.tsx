@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTheme } from "next-themes"
-import { Activity, ChevronDown, LogOut, RefreshCw, Sun, Moon } from "lucide-react"
+import { Activity, ChevronDown, Github, LogOut, RefreshCw, Sun, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
