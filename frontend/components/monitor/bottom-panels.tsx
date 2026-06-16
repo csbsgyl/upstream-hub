@@ -209,6 +209,7 @@ const notifyTypeIcon: Partial<Record<NotificationChannelType, LucideIcon>> = {
   wecom: Send,
   dingtalk: Send,
   feishu: Send,
+  serverchan: Send,
 }
 
 export function NotificationStatus() {

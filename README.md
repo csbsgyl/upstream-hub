@@ -147,6 +147,18 @@ UPSTREAMHUB_IMAGE_TAG=v0.1.0
 - `webhook_url` 必填。
 - `secret` 可选，启用“签名校验”时填写。
 
+### Server酱
+
+```json
+{
+	"sendkey": "SCT...或 sctp..."
+}
+```
+
+- `sendkey` 必填，从 [Server酱·Turbo版](https://sct.ftqq.com/) 或 [Server酱³](https://sc3.ft07.com/) 的 SendKey 页面获取。
+- Turbo 版（`SCT` 开头）和 Server酱³（`sctp` 开头）会按 SendKey 前缀自动识别，无需选择版本。
+- 通知会作为微信 / APP 推送送达，`title` 取消息标题、`desp` 取正文（支持 Markdown）。
+
 ### 订阅规则
 
 通知渠道可以限制只接收指定上游或指定倍率分组的事件。留空或 `[]` 表示接收全部事件。

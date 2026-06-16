@@ -58,6 +58,8 @@ interface ConfigState {
   // wecom / dingtalk / feishu
   webhook_url: string
   secret: string
+  // serverchan
+  sendkey: string
 }
 
 interface SubRow {
@@ -90,6 +92,7 @@ function emptyConfig(): ConfigState {
     use_tls: false,
     webhook_url: "",
     secret: "",
+    sendkey: "",
   }
 }
 
@@ -162,6 +165,8 @@ function buildConfigByType(type: NotificationChannelType, cfg: ConfigState): str
       if (cfg.secret) body.secret = cfg.secret
       return JSON.stringify(body)
     }
+    case "serverchan":
+      return JSON.stringify({ sendkey: cfg.sendkey.trim() })
   }
 }
 
@@ -231,6 +236,8 @@ export function NotificationFormDialog({
             return !!form.cfg.url
           case "email":
             return !!(form.cfg.host || form.cfg.from || form.cfg.to)
+          case "serverchan":
+            return !!form.cfg.sendkey
           default:
             return !!form.cfg.webhook_url
         }
@@ -319,6 +326,7 @@ export function NotificationFormDialog({
                 <SelectItem value="wecom">企业微信</SelectItem>
                 <SelectItem value="dingtalk">钉钉</SelectItem>
                 <SelectItem value="feishu">飞书</SelectItem>
+                <SelectItem value="serverchan">Server酱</SelectItem>
               </SelectContent>
             </Select>
             {isEdit ? (
@@ -588,6 +596,30 @@ function ConfigFields({ type, cfg, updateCfg, disabled, isEdit }: ConfigFieldsPr
             onCheckedChange={(v) => updateCfg({ use_tls: v })}
             disabled={disabled}
           />
+        </div>
+        {hint}
+      </div>
+    )
+  }
+
+  if (type === "serverchan") {
+    return (
+      <div className="space-y-2 rounded-lg border border-border p-3">
+        <p className="text-xs font-medium text-muted-foreground">Server酱</p>
+        <div className="space-y-1.5">
+          <Label htmlFor="sc-sendkey">SendKey</Label>
+          <Input
+            id="sc-sendkey"
+            type="password"
+            placeholder="SCT... 或 sctp..."
+            value={cfg.sendkey}
+            onChange={(e) => updateCfg({ sendkey: e.target.value })}
+            required={!isEdit}
+            disabled={disabled}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Turbo 版 (SCT 开头) 与 Server酱³ (sctp 开头) 自动识别，填一个 SendKey 即可
+          </p>
         </div>
         {hint}
       </div>

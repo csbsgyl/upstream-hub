@@ -14,6 +14,7 @@ export type NotificationChannelType =
   | "wecom"
   | "dingtalk"
   | "feishu"
+  | "serverchan"
 
 export type CaptchaProviderType =
   | "capsolver"

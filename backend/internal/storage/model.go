@@ -147,12 +147,13 @@ func (BalanceSnapshot) TableName() string { return "balance_snapshots" }
 type NotificationChannelType string
 
 const (
-	NotifyTelegram NotificationChannelType = "telegram"
-	NotifyWebhook  NotificationChannelType = "webhook"
-	NotifyEmail    NotificationChannelType = "email"
-	NotifyWecom    NotificationChannelType = "wecom"
-	NotifyDingTalk NotificationChannelType = "dingtalk"
-	NotifyFeishu   NotificationChannelType = "feishu"
+	NotifyTelegram   NotificationChannelType = "telegram"
+	NotifyWebhook    NotificationChannelType = "webhook"
+	NotifyEmail      NotificationChannelType = "email"
+	NotifyWecom      NotificationChannelType = "wecom"
+	NotifyDingTalk   NotificationChannelType = "dingtalk"
+	NotifyFeishu     NotificationChannelType = "feishu"
+	NotifyServerChan NotificationChannelType = "serverchan"
 )
 
 // NotificationChannel 通知渠道配置。ConfigCipher 加密保存 JSON 配置（含 token / webhook url / 密码等）。
