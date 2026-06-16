@@ -26,19 +26,26 @@
 
 ### 一键部署（推荐）
 
-在服务器上克隆仓库后，直接跑部署脚本：
+新服务器上**一条命令**搞定（自动 clone / 更新 / 构建 / 启动）：
 
 ```bash
-git clone git@github.com:csbsgyl/upstream-hub.git
+curl -fsSL https://raw.githubusercontent.com/csbsgyl/upstream-hub/main/scripts/bootstrap.sh | bash
+```
+
+它会自动：clone 仓库（已存在则更新）→ 检查 docker / compose → 首次生成 `.env`（随机 `APP_SECRET` / `POSTGRES_PASSWORD`，默认开启登录）→ `docker compose up -d --build` 构建并启动 → 等待健康检查。
+
+> 前提：服务器已装好 `git`、`docker`、`docker compose`、`curl`。
+
+启动后访问 `http://localhost:8080`，**默认账号 `admin` / `admin`，首次登录会强制要求修改密码。**
+
+#### 已经 clone 过仓库？
+
+进到目录里跑部署脚本即可，每次更新也是这一条：
+
+```bash
 cd upstream-hub
 ./scripts/deploy.sh
 ```
-
-脚本会自动：检查 docker / compose → 首次生成 `.env`（随机 `APP_SECRET` / `POSTGRES_PASSWORD`，默认开启登录）→ `git pull` 拉取最新代码 → `docker compose up -d --build` 构建并启动 → 等待健康检查。
-
-之后每次更新，进到目录里再跑一次 `./scripts/deploy.sh` 即可。
-
-启动后访问 `http://localhost:8080`，**默认账号 `admin` / `admin`，首次登录会强制要求修改密码。**
 
 ### 手动 Docker Compose
 
