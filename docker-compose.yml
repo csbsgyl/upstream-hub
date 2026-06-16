@@ -40,8 +40,8 @@ services:
       UPSTREAMHUB_SERVER_MODE: ${UPSTREAMHUB_SERVER_MODE:-release}
       UPSTREAMHUB_LOG_LEVEL: ${UPSTREAMHUB_LOG_LEVEL:-info}
       APP_SECRET: ${APP_SECRET:?APP_SECRET is required, set it in .env}
-      # 鉴权默认关闭。设 AUTH_ENABLED=true 时 ADMIN_PASSWORD 也必须填，否则后端启动失败。
-      AUTH_ENABLED: ${AUTH_ENABLED:-false}
+      # 鉴权默认开启。默认账号 admin/admin 首次登录强制改密；ADMIN_PASSWORD 填了则用它且无需改密。
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-}

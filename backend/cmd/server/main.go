@@ -49,29 +49,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Auth：默认禁用（AUTH_ENABLED=false），所有 /api/* 免 token；
-	// 显式开启时账号/密码必填，token secret 缺省回退到 AppSecret。
-	var authSvc *auth.Service
-	if cfg.Auth.Enabled {
-		tokenSecret := cfg.Auth.TokenSecret
-		if tokenSecret == "" {
-			tokenSecret = cfg.Security.AppSecret
-		}
-		authSvc, err = auth.New(
-			cfg.Auth.Username,
-			cfg.Auth.Password,
-			tokenSecret,
-			time.Duration(cfg.Auth.SessionTTLHours)*time.Hour,
-		)
-		if err != nil {
-			log.Error("init auth failed (set ADMIN_USERNAME / ADMIN_PASSWORD or AUTH_ENABLED=false)", "err", err)
-			os.Exit(1)
-		}
-		log.Info("auth enabled", "username", cfg.Auth.Username)
-	} else {
-		log.Warn("auth disabled — all /api/* endpoints are open; set AUTH_ENABLED=true for production exposure")
-	}
-
 	db, err := storage.Open(cfg.Database.ToStorageConfig())
 	if err != nil {
 		log.Error("open database failed", "err", err)
@@ -88,6 +65,34 @@ func main() {
 	notifies := storage.NewNotifications(db)
 	rates := storage.NewRates(db)
 	monLogs := storage.NewMonitorLogs(db)
+	adminUsers := storage.NewAdminUsers(db)
+
+	// Auth：默认开启（AUTH_ENABLED=true）。凭据持久化在 admin_users 表，
+	// 表为空时 seed 默认账号：未显式设 ADMIN_PASSWORD 时为 admin/admin 且首登强制改密。
+	// token secret 缺省回退到 AppSecret。
+	var authSvc *auth.Service
+	if cfg.Auth.Enabled {
+		tokenSecret := cfg.Auth.TokenSecret
+		if tokenSecret == "" {
+			tokenSecret = cfg.Security.AppSecret
+		}
+		if err := auth.Seed(adminUsers, cfg.Auth.Username, cfg.Auth.Password, log); err != nil {
+			log.Error("seed admin user failed", "err", err)
+			os.Exit(1)
+		}
+		authSvc, err = auth.New(
+			adminUsers,
+			tokenSecret,
+			time.Duration(cfg.Auth.SessionTTLHours)*time.Hour,
+		)
+		if err != nil {
+			log.Error("init auth failed (set AUTH_ENABLED=false to disable)", "err", err)
+			os.Exit(1)
+		}
+		log.Info("auth enabled")
+	} else {
+		log.Warn("auth disabled — all /api/* endpoints are open; set AUTH_ENABLED=true for production exposure")
+	}
 
 	channelSvc := channel.NewService(channels, authSessions, captchas, monLogs, cipher)
 	dispatcher := notify.NewDispatcher(notifies, cipher, log, notify.Policy{

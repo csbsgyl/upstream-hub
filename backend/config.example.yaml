@@ -21,11 +21,11 @@ security:
   appSecret: "please-change-me-to-a-long-random-secret"
 
 auth:
-  # 鉴权总开关。false（默认）= 所有 /api/* 免登录、前端跳过登录页。
-  # 公网暴露请设 true 并填好下面的账号密码。
-  enabled: false
-  # 后台登录账号 / 密码（明文存放在 config，单用户场景）。
-  # 也可分别用 ADMIN_USERNAME / ADMIN_PASSWORD 环境变量覆盖。enabled=false 时可留空。
+  # 鉴权总开关。true（默认）= 访问需要登录；false = 所有 /api/* 免登录、前端跳过登录页。
+  enabled: true
+  # Seed 用的默认管理员账号 / 密码（仅在 admin_users 表为空时生效，凭据存数据库 bcrypt 哈希）。
+  # password 留空 → 播种 admin/admin 且首次登录强制改密；填了强密码 → 用它且无需改密。
+  # 也可分别用 ADMIN_USERNAME / ADMIN_PASSWORD 环境变量覆盖。
   username: "admin"
   password: ""
   # token 签名密钥；留空时回退使用 security.appSecret。

@@ -58,11 +58,15 @@ type SecurityConfig struct {
 
 // AuthConfig 后台单用户登录配置。
 //
-// Enabled = false（默认）时整套鉴权被关掉：/api/* 全部免 token，前端检测后跳过登录页。
-// 适合纯内网 / 反代后面的部署。需要公网暴露时必须显式 Enabled=true 并设强密码。
+// Enabled = true（默认）时整套鉴权开启：/api/* 需要登录 token。凭据持久化在
+// admin_users 表（bcrypt）。表为空时启动会 seed：未显式设 Password 时为 admin/admin
+// 且首次登录强制改密；设了 Password 则用它且无需改密。
 //
-// Enabled=true 时 Username/Password 是写死的管理员凭据，TokenSecret 用于签发 HMAC token。
-// 如果 TokenSecret 为空，会回退使用 Security.AppSecret，保证有合理默认。
+// Enabled = false 时整套鉴权被关掉：/api/* 全部免 token，前端检测后跳过登录页。
+// 适合纯内网 / 反代后面的部署。
+//
+// Username 是 seed 默认账号用的用户名；后续改密不影响。TokenSecret 用于签发 HMAC token，
+// 为空时回退使用 Security.AppSecret。
 type AuthConfig struct {
 	Enabled         bool   `mapstructure:"enabled"`
 	Username        string `mapstructure:"username"`
@@ -191,7 +195,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("scheduler.retention.balanceSnapshotsDays", 90)
 	v.SetDefault("scheduler.retention.notificationLogsDays", 90)
 
-	v.SetDefault("auth.enabled", false)
+	v.SetDefault("auth.enabled", true)
 	v.SetDefault("auth.username", "admin")
 	v.SetDefault("auth.sessionTTLHours", 168) // 7 天
 

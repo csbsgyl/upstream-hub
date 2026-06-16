@@ -22,9 +22,23 @@
 
 ## 启动方式
 
-### Docker Compose
+### 一键部署（推荐）
 
-推荐用 Docker Compose 部署：
+在服务器上克隆仓库后，直接跑部署脚本：
+
+```bash
+git clone git@github.com:csbsgyl/upstream-hub.git
+cd upstream-hub
+./scripts/deploy.sh
+```
+
+脚本会自动：检查 docker / compose → 首次生成 `.env`（随机 `APP_SECRET` / `POSTGRES_PASSWORD`，默认开启登录）→ `git pull` 拉取最新代码 → `docker compose up -d --build` 构建并启动 → 等待健康检查。
+
+之后每次更新，进到目录里再跑一次 `./scripts/deploy.sh` 即可。
+
+启动后访问 `http://localhost:8080`，**默认账号 `admin` / `admin`，首次登录会强制要求修改密码。**
+
+### 手动 Docker Compose
 
 ```bash
 cp .env.example .env
@@ -37,18 +51,19 @@ APP_SECRET=请替换为 32 字节以上随机字符串
 POSTGRES_PASSWORD=请替换为数据库密码
 ```
 
-公网访问建议同时开启后台登录：
+鉴权默认开启（`AUTH_ENABLED=true`）。默认账号 `admin` / `admin`，首次登录强制改密；凭据持久化在数据库（bcrypt 哈希）。如想直接指定一个强密码、跳过首登改密：
 
 ```env
-AUTH_ENABLED=true
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=请替换为强密码
 ```
 
+纯内网 / 反代后面想免登录，可设 `AUTH_ENABLED=false`。
+
 启动：
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 启动后访问：
@@ -57,11 +72,7 @@ docker compose up -d
 http://localhost:8080
 ```
 
-默认使用 `ghcr.io/worryzyy/upstream-hub:latest` 镜像。需要固定版本时，在 `.env` 里设置：
-
-```env
-UPSTREAMHUB_IMAGE_TAG=v0.1.0
-```
+> 说明：`docker-compose.yml` 自带 `build:` 块，会从当前源码构建镜像（包含本仓库的二开改动）。如果想改用预构建镜像，在 `.env` 里设置 `UPSTREAMHUB_IMAGE_TAG`。
 
 ## 通知渠道配置
 

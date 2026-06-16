@@ -241,3 +241,21 @@ type MonitorLog struct {
 }
 
 func (MonitorLog) TableName() string { return "monitor_logs" }
+
+// AdminUser 后台管理员账号。凭据持久化在数据库（区别于早期写死在 config 的方式），
+// 密码以 bcrypt 哈希保存，支持"首次登录强制修改密码"。
+//
+// 单用户场景下通常只有一行（默认 admin）。启动时若 auth 开启且表为空，
+// 会 seed 一个默认账号（见 auth.Service 的 seeding 逻辑）。
+type AdminUser struct {
+	ID                 uint           `gorm:"primaryKey" json:"id"`
+	Username           string         `gorm:"size:128;not null;uniqueIndex" json:"username"`
+	PasswordHash       string         `gorm:"size:255;not null" json:"-"`
+	MustChangePassword bool           `gorm:"not null;default:false" json:"must_change_password"`
+	CreatedAt          time.Time      `json:"created_at"`
+	UpdatedAt          time.Time      `json:"updated_at"`
+	DeletedAt          gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+func (AdminUser) TableName() string { return "admin_users" }
+
