@@ -2,6 +2,8 @@
 
 面向 NewAPI / Sub2API 站点的上游渠道监控面板，用来集中查看余额、模型倍率、倍率变化记录和通知状态。
 
+> 本项目基于 [worryzyy/upstream-hub](https://github.com/worryzyy/upstream-hub) 二次开发，感谢原作者 [@worryzyy](https://github.com/worryzyy) 的开源工作。本仓库在其基础上新增了 Server酱 通知渠道、一键部署脚本，以及默认开启登录 + 首次强制改密等功能，详见文末「二次开发说明」。
+
 ## 预览
 
 ![Upstream Hub 预览 1](docs/images/demo1.png)
@@ -18,7 +20,7 @@
 - 余额汇总和低余额提醒
 - 模型倍率监控和变化记录
 - Cloudflare Turnstile 打码支持
-- Telegram、Webhook、邮件、企业微信、钉钉、飞书通知
+- Telegram、Webhook、邮件、企业微信、钉钉、飞书、Server酱 通知
 
 ## 启动方式
 
@@ -185,6 +187,20 @@ http://localhost:8080
 - `mode=all`：接收该上游全部事件。
 - `mode=groups`：倍率变化只接收 `groups` 中指定的模型或分组。
 
+## 二次开发说明
+
+本仓库是 [worryzyy/upstream-hub](https://github.com/worryzyy/upstream-hub) 的二次开发版本。核心监控能力（多上游管理、余额/倍率监控、打码、通知调度等）均来自原项目，在此基础上新增：
+
+- **Server酱通知渠道** — 支持 Turbo 版与 Server酱³，按 SendKey 前缀自动识别。
+- **一键部署脚本** [`scripts/deploy.sh`](scripts/deploy.sh) — 自动生成 `.env`、拉取代码、构建并启动、健康检查。
+- **默认开启后台登录** — 默认账号 `admin` / `admin`，凭据持久化在数据库（bcrypt），首次登录强制修改密码。
+
+如果这个项目对你有帮助，也欢迎去给[原项目](https://github.com/worryzyy/upstream-hub)点个 Star ⭐。
+
+## 致谢
+
+- 原项目：[worryzyy/upstream-hub](https://github.com/worryzyy/upstream-hub) by [@worryzyy](https://github.com/worryzyy)
+
 ## License
 
-MIT
+沿用原项目协议：[原项目](https://github.com/worryzyy/upstream-hub) README 声明为 MIT。本仓库的二次开发改动同样以 MIT 协议发布。
