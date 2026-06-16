@@ -81,7 +81,7 @@ docker compose up -d --build
 http://localhost:8080
 ```
 
-> 说明：`docker-compose.yml` 自带 `build:` 块，会从当前源码构建镜像（包含本仓库的二开改动）。如果想改用预构建镜像，在 `.env` 里设置 `UPSTREAMHUB_IMAGE_TAG`。
+> 说明：本仓库是二开版，`docker-compose.yml` 会从当前源码构建镜像（包含本仓库的二开改动），不会去拉原作者的预构建镜像。**更新代码后务必带 `--build` 重新构建**（`docker compose up -d --build`，或直接用 `./scripts/deploy.sh`），否则会沿用旧镜像、看不到新功能。
 
 ## 通知渠道配置
 

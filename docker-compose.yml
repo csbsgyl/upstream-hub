@@ -18,10 +18,10 @@ services:
       retries: 5
 
   app:
-    # 优先用已发布的镜像（默认 latest，可改成 v0.1.0 等具体版本锁定）。
-    # 如果指定的 image 在 ghcr.io 找不到，且本机没缓存，会回落到 build 块从源码构建。
-    # 完全离线 / 强制重建：`docker compose build`；强制重新拉：`docker compose pull`。
-    image: ghcr.io/worryzyy/upstream-hub:${UPSTREAMHUB_IMAGE_TAG:-latest}
+    # 本仓库是二开版，默认从当前源码构建（build 块），镜像名用本仓库自己的命名空间，
+    # 避免误拉原作者 ghcr.io/worryzyy 的预构建镜像（那里没有本仓库的二开改动）。
+    # 强制重建：`docker compose up -d --build`（推荐用 ./scripts/deploy.sh）。
+    image: upstream-hub:local
     build:
       context: .
       dockerfile: Dockerfile
