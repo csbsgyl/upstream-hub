@@ -36,9 +36,17 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm">
-        <CardHeader className="space-y-1.5">
-          <CardTitle className="text-2xl">Upstream-hub</CardTitle>
-          <CardDescription>登录后台，监控渠道余额和倍率。</CardDescription>
+        <CardHeader className="space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 items-center justify-center overflow-hidden rounded-lg bg-slate-950 shadow-sm ring-1 ring-border">
+              <img src="/icon.svg" alt="" className="size-7" />
+            </div>
+            <div className="leading-tight">
+              <CardTitle className="text-2xl">上游监控台</CardTitle>
+              <p className="text-xs font-medium text-muted-foreground">Gateway Monitor</p>
+            </div>
+          </div>
+          <CardDescription>登录后台，查看渠道余额、倍率和告警状态。</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

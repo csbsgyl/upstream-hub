@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTheme } from "next-themes"
-import { Activity, Github, LogOut, RefreshCw, Sun, Moon } from "lucide-react"
+import { Github, LogOut, RefreshCw, Sun, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -52,11 +52,53 @@ export function MonitorHeader() {
     <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-sm">
       <div className="mx-auto flex h-14 max-w-360 items-center justify-between gap-4 px-5">
         {/* left: logo + title */}
-        <div className="flex items-center gap-2.5">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-foreground text-background">
-            <Activity className="size-4" strokeWidth={2.5} />
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-950 shadow-sm ring-1 ring-border">
+            <svg
+              viewBox="0 0 32 32"
+              className="size-6"
+              aria-hidden="true"
+            >
+              <path
+                d="M7 11.5h9.5c4.2 0 7.5 3.1 7.5 7.2v1.6"
+                fill="none"
+                stroke="#22d3ee"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+              <path
+                d="M7 20.5h9.5c4.2 0 7.5-3.1 7.5-7.2v-1.6"
+                fill="none"
+                stroke="#7dd3fc"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+              <path
+                d="M20.5 8.5 25 12.5 20.5 16.5"
+                fill="none"
+                stroke="#f8fafc"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="7" cy="11.5" r="2.1" fill="#22c55e" />
+              <circle cx="7" cy="20.5" r="2.1" fill="#a3e635" />
+              <circle cx="24" cy="16" r="2.3" fill="#f8fafc" />
+            </svg>
           </div>
-          <h1 className="text-base font-semibold tracking-tight text-foreground">Upstream-hub</h1>
+          <div className="min-w-0 leading-tight">
+            <div className="flex items-baseline gap-2">
+              <h1 className="truncate text-base font-semibold tracking-tight text-foreground">
+                {"上游监控台"}
+              </h1>
+              <span className="hidden rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200 sm:inline-flex dark:bg-emerald-950/30 dark:text-emerald-300 dark:ring-emerald-800">
+                {"Live"}
+              </span>
+            </div>
+            <p className="hidden text-[11px] font-medium text-muted-foreground sm:block">
+              {"Gateway Monitor"}
+            </p>
+          </div>
         </div>
 
         {/* right: actions */}
