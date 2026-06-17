@@ -156,7 +156,7 @@ export function MonitorHeader() {
                 aria-label="GitHub 仓库"
               >
                 <a
-                  href="https://github.com/worryzyy/upstream-hub"
+                  href="https://github.com/csbsgyl/upstream-hub"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -165,7 +165,7 @@ export function MonitorHeader() {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              {"GitHub · worryzyy/upstream-hub"}
+              {"GitHub · csbsgyl/upstream-hub"}
             </TooltipContent>
           </Tooltip>
 
