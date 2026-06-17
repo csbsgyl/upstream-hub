@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Upstream Hub">
+  <defs>
+    <linearGradient id="bg" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#172033"/>
+      <stop offset="1" stop-color="#070A12"/>
+    </linearGradient>
+    <linearGradient id="flow" x1="16" y1="18" x2="48" y2="46" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#bg)"/>
+  <path d="M18 23h18c7 0 12 5 12 12v4" fill="none" stroke="url(#flow)" stroke-width="6" stroke-linecap="round"/>
+  <path d="M18 41h18c7 0 12-5 12-12v-4" fill="none" stroke="#7DD3FC" stroke-width="6" stroke-linecap="round" opacity=".9"/>
+  <path d="M42 18l8 7-8 7" fill="none" stroke="#E0F2FE" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="19" cy="23" r="4.5" fill="#22C55E"/>
+  <circle cx="19" cy="41" r="4.5" fill="#A3E635"/>
+  <circle cx="48" cy="32" r="5" fill="#F8FAFC"/>
+</svg>
