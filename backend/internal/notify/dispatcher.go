@@ -49,6 +49,7 @@ func (d *Dispatcher) Policy() Policy {
 // Send 把消息发送到一个具体的渠道（用于"测试发送"按钮）。
 // 不走 Policy 过滤 / 不走重试——测试场景要求快速反馈，失败立刻显示出来。
 func (d *Dispatcher) Send(ctx context.Context, ch *storage.NotificationChannel, msg Message) error {
+	msg = brandMessage(ch, msg)
 	cfgJSON, err := d.cipher.Decrypt(ch.ConfigCipher)
 	if err != nil {
 		return fmt.Errorf("decrypt config: %w", err)
@@ -214,6 +215,7 @@ func (d *Dispatcher) fanout(ctx context.Context, msg Message, extraFilter func(*
 
 // sendOne 给单个通知渠道发送一条消息，包含"解密配置 → 构造 Notifier → 重试发送 → 写日志"。
 func (d *Dispatcher) sendOne(ctx context.Context, ch *storage.NotificationChannel, msg Message) error {
+	msg = brandMessage(ch, msg)
 	cfgJSON, err := d.cipher.Decrypt(ch.ConfigCipher)
 	if err != nil {
 		d.logResult(ch.ID, msg, err)

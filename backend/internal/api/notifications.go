@@ -158,9 +158,10 @@ func testNotify(c *gin.Context, d *Deps) {
 		fail(c, http.StatusNotFound, err)
 		return
 	}
+	displayName := notify.DisplayName(ch)
 	msg := notify.Message{
-		Subject: "[upstream-hub] 测试通知",
-		Body:    "这是一条来自 upstream-hub 的测试消息。",
+		Subject: "[" + displayName + "] 测试通知",
+		Body:    "这是一条来自 " + displayName + " 的测试消息。",
 	}
 	if err := d.Dispatcher.Send(c.Request.Context(), ch, msg); err != nil {
 		c.JSON(http.StatusOK, gin.H{"ok": false, "error": err.Error()})
