@@ -33,10 +33,12 @@ func newFeishu(raw string) (*feishu, error) {
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
 		return nil, err
 	}
-	if cfg.WebhookURL == "" {
-		return nil, errors.New("feishu webhook_url is required")
+	var err error
+	cfg.WebhookURL, err = normalizeNotifyURL(cfg.WebhookURL, "feishu webhook_url")
+	if err != nil {
+		return nil, err
 	}
-	return &feishu{cfg: cfg, http: resty.New()}, nil
+	return &feishu{cfg: cfg, http: newNotifyHTTPClient()}, nil
 }
 
 func (f *feishu) Type() storage.NotificationChannelType { return storage.NotifyFeishu }

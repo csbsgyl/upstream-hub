@@ -27,10 +27,12 @@ func newWecom(raw string) (*wecom, error) {
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
 		return nil, err
 	}
-	if cfg.WebhookURL == "" {
-		return nil, errors.New("wecom webhook_url is required")
+	var err error
+	cfg.WebhookURL, err = normalizeNotifyURL(cfg.WebhookURL, "wecom webhook_url")
+	if err != nil {
+		return nil, err
 	}
-	return &wecom{cfg: cfg, http: resty.New()}, nil
+	return &wecom{cfg: cfg, http: newNotifyHTTPClient()}, nil
 }
 
 func (w *wecom) Type() storage.NotificationChannelType { return storage.NotifyWecom }

@@ -42,7 +42,14 @@ func newServerChan(raw string) (*serverChan, error) {
 	if cfg.SendKey == "" {
 		return nil, errors.New("serverchan sendkey is required")
 	}
-	return &serverChan{cfg: cfg, http: resty.New()}, nil
+	if cfg.APIBase != "" {
+		base, err := normalizeNotifyURL(cfg.APIBase, "serverchan api_base")
+		if err != nil {
+			return nil, err
+		}
+		cfg.APIBase = base
+	}
+	return &serverChan{cfg: cfg, http: newNotifyHTTPClient()}, nil
 }
 
 func (s *serverChan) Type() storage.NotificationChannelType { return storage.NotifyServerChan }

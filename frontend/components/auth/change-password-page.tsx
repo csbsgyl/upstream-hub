@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
 import type { ApiError } from "@/lib/api"
 
-const MIN_PASSWORD_LEN = 6
+const MIN_PASSWORD_LEN = 8
 
 /**
  * ChangePasswordPage 在"首次登录强制改密"场景下渲染。

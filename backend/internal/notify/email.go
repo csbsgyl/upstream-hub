@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/smtp"
 	"strings"
 	"time"
@@ -29,6 +30,8 @@ type emailConfig struct {
 
 type email struct{ cfg emailConfig }
 
+const smtpTimeout = 45 * time.Second
+
 func newEmail(raw string) (*email, error) {
 	var cfg emailConfig
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
@@ -37,6 +40,14 @@ func newEmail(raw string) (*email, error) {
 	if cfg.Host == "" || cfg.Port == 0 || cfg.From == "" || len(cfg.To) == 0 {
 		return nil, errors.New("email config requires host/port/from/to")
 	}
+	if hasHeaderNewline(cfg.From) {
+		return nil, errors.New("email from contains invalid newline")
+	}
+	for _, to := range cfg.To {
+		if hasHeaderNewline(to) {
+			return nil, errors.New("email recipient contains invalid newline")
+		}
+	}
 	return &email{cfg: cfg}, nil
 }
 
@@ -44,49 +55,49 @@ func (e *email) Type() storage.NotificationChannelType { return storage.NotifyEm
 
 func (e *email) Send(ctx context.Context, msg Message) error {
 	addr := fmt.Sprintf("%s:%d", e.cfg.Host, e.cfg.Port)
-	auth := smtp.PlainAuth("", e.cfg.Username, e.cfg.Password, e.cfg.Host)
+	var auth smtp.Auth
+	if e.cfg.Username != "" || e.cfg.Password != "" {
+		auth = smtp.PlainAuth("", e.cfg.Username, e.cfg.Password, e.cfg.Host)
+	}
 
 	body := buildEmailBody(e.cfg.From, e.cfg.To, msg.Subject, msg.Body)
 
-	// 简单 deadline，避免完全阻塞调度。
-	done := make(chan error, 1)
-	go func() {
-		if e.cfg.UseTLS {
-			done <- sendTLS(addr, e.cfg.Host, auth, e.cfg.From, e.cfg.To, []byte(body))
-			return
-		}
-		done <- smtp.SendMail(addr, auth, e.cfg.From, e.cfg.To, []byte(body))
-	}()
-
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(45 * time.Second):
-		return errors.New("smtp send timeout")
+	if e.cfg.UseTLS {
+		return sendTLS(ctx, addr, e.cfg.Host, auth, e.cfg.From, e.cfg.To, []byte(body))
 	}
+	return sendSMTP(ctx, addr, e.cfg.Host, auth, e.cfg.From, e.cfg.To, []byte(body))
 }
 
 func buildEmailBody(from string, to []string, subject, body string) string {
 	headers := []string{
 		"From: " + from,
 		"To: " + strings.Join(to, ", "),
-		"Subject: " + subject,
+		"Subject: " + sanitizeHeaderValue(subject),
 		"MIME-Version: 1.0",
 		"Content-Type: text/plain; charset=UTF-8",
 	}
 	return strings.Join(headers, "\r\n") + "\r\n\r\n" + body
 }
 
-// sendTLS 通过 SMTPS（隐式 TLS，常见于 465）发送邮件。
-func sendTLS(addr, host string, auth smtp.Auth, from string, to []string, body []byte) error {
-	tlsConfig := &tls.Config{ServerName: host}
-	conn, err := tls.Dial("tcp", addr, tlsConfig)
+func hasHeaderNewline(s string) bool {
+	return strings.ContainsAny(s, "\r\n")
+}
+
+func sanitizeHeaderValue(s string) string {
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return strings.TrimSpace(s)
+}
+
+func sendSMTP(ctx context.Context, addr, host string, auth smtp.Auth, from string, to []string, body []byte) error {
+	conn, err := (&net.Dialer{Timeout: smtpTimeout}).DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("smtp tls dial: %w", err)
+		return fmt.Errorf("smtp dial: %w", err)
 	}
 	defer conn.Close()
+	if err := conn.SetDeadline(deadlineFromContext(ctx)); err != nil {
+		return fmt.Errorf("smtp set deadline: %w", err)
+	}
 
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {
@@ -94,6 +105,35 @@ func sendTLS(addr, host string, auth smtp.Auth, from string, to []string, body [
 	}
 	defer client.Quit()
 
+	if ok, _ := client.Extension("STARTTLS"); ok {
+		if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
+			return fmt.Errorf("smtp starttls: %w", err)
+		}
+	}
+	return sendSMTPWithClient(client, auth, from, to, body)
+}
+
+// sendTLS 通过 SMTPS（隐式 TLS，常见于 465）发送邮件。
+func sendTLS(ctx context.Context, addr, host string, auth smtp.Auth, from string, to []string, body []byte) error {
+	tlsConfig := &tls.Config{ServerName: host}
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: smtpTimeout}, "tcp", addr, tlsConfig)
+	if err != nil {
+		return fmt.Errorf("smtp tls dial: %w", err)
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(deadlineFromContext(ctx)); err != nil {
+		return fmt.Errorf("smtp set deadline: %w", err)
+	}
+
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return fmt.Errorf("smtp new client: %w", err)
+	}
+	defer client.Quit()
+	return sendSMTPWithClient(client, auth, from, to, body)
+}
+
+func sendSMTPWithClient(client *smtp.Client, auth smtp.Auth, from string, to []string, body []byte) error {
 	if auth != nil {
 		if err := client.Auth(auth); err != nil {
 			return fmt.Errorf("smtp auth: %w", err)
@@ -118,4 +158,11 @@ func sendTLS(addr, host string, auth smtp.Auth, from string, to []string, body [
 		return fmt.Errorf("smtp close: %w", err)
 	}
 	return nil
+}
+
+func deadlineFromContext(ctx context.Context) time.Time {
+	if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < smtpTimeout {
+		return deadline
+	}
+	return time.Now().Add(smtpTimeout)
 }

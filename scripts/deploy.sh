@@ -101,7 +101,10 @@ if [[ -d .git ]]; then
   if git pull --ff-only origin "${CURRENT_BRANCH}"; then
     c_ok "代码已更新到最新（${CURRENT_BRANCH}）"
   else
-    c_warn "git pull 未能快进（可能有本地改动），用现有代码继续构建"
+    c_err "git pull 未能快进（可能有本地改动或服务器分支不对），已停止部署，避免用旧代码构建"
+    echo "  可排查：git status --short --branch"
+    echo "  确认无误后再重新运行 ./scripts/deploy.sh"
+    exit 1
   fi
 else
   c_warn "当前目录不是 git 仓库，跳过 git pull，用现有文件构建"

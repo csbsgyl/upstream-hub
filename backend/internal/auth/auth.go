@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -28,13 +29,20 @@ import (
 )
 
 // minPasswordLen 新密码最小长度，避免改密又改回弱密码。
-const minPasswordLen = 6
+const minPasswordLen = 8
+
+const (
+	loginMaxAttempts = 8
+	loginWindow      = 10 * time.Minute
+	dummyBcryptHash  = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+)
 
 // Service 单管理员登录服务。凭据来自 *storage.AdminUsers，不再写死在 config。
 type Service struct {
 	users    *storage.AdminUsers
 	secret   []byte
 	tokenTTL time.Duration
+	limiter  *loginLimiter
 }
 
 // New 构造 Service。secret 推荐 32 字节以上；若为空报错。
@@ -53,6 +61,7 @@ func New(users *storage.AdminUsers, secret string, ttl time.Duration) (*Service,
 		users:    users,
 		secret:   []byte(secret),
 		tokenTTL: ttl,
+		limiter:  newLoginLimiter(),
 	}, nil
 }
 
@@ -76,6 +85,10 @@ type claims struct {
 // 安全：用户不存在时仍跑一次 bcrypt 比较占位哈希，避免通过响应时间区分
 // "用户不存在" vs "密码错误"。
 func (s *Service) Login(username, password string) (*LoginResult, error) {
+	key := strings.ToLower(strings.TrimSpace(username))
+	if s.limiter != nil && s.limiter.Blocked(key) {
+		return nil, errors.New("too many login attempts; please try again later")
+	}
 	user, err := s.users.FindByUsername(username)
 	if err != nil {
 		return nil, err
@@ -83,13 +96,22 @@ func (s *Service) Login(username, password string) (*LoginResult, error) {
 	if user == nil {
 		// 恒定时间占位比较，抹平时序差异。
 		_ = bcrypt.CompareHashAndPassword(
-			[]byte("$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinv"),
+			[]byte(dummyBcryptHash),
 			[]byte(password),
 		)
+		if s.limiter != nil {
+			s.limiter.RecordFailure(key)
+		}
 		return nil, errors.New("invalid username or password")
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		if s.limiter != nil {
+			s.limiter.RecordFailure(key)
+		}
 		return nil, errors.New("invalid username or password")
+	}
+	if s.limiter != nil {
+		s.limiter.Reset(key)
 	}
 	return s.issue(user.Username, user.MustChangePassword)
 }
@@ -229,6 +251,61 @@ func Seed(users *storage.AdminUsers, username, password string, log *slog.Logger
 	return nil
 }
 
+type loginAttempt struct {
+	count       int
+	windowStart time.Time
+}
+
+type loginLimiter struct {
+	mu       sync.Mutex
+	attempts map[string]loginAttempt
+}
+
+func newLoginLimiter() *loginLimiter {
+	return &loginLimiter{attempts: map[string]loginAttempt{}}
+}
+
+func (l *loginLimiter) Blocked(key string) bool {
+	if key == "" {
+		key = "unknown"
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	a, ok := l.attempts[key]
+	if !ok {
+		return false
+	}
+	if time.Since(a.windowStart) > loginWindow {
+		delete(l.attempts, key)
+		return false
+	}
+	return a.count >= loginMaxAttempts
+}
+
+func (l *loginLimiter) RecordFailure(key string) {
+	if key == "" {
+		key = "unknown"
+	}
+	now := time.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	a := l.attempts[key]
+	if a.windowStart.IsZero() || now.Sub(a.windowStart) > loginWindow {
+		a = loginAttempt{windowStart: now}
+	}
+	a.count++
+	l.attempts[key] = a
+}
+
+func (l *loginLimiter) Reset(key string) {
+	if key == "" {
+		key = "unknown"
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.attempts, key)
+}
+
 // Middleware 校验 Authorization 头。不通过返回 401。
 //
 // 强制改密：token 的 mc=true 时，除"改密相关端点"外一律 403，
@@ -289,12 +366,6 @@ func extractToken(r *http.Request) string {
 	h := r.Header.Get("Authorization")
 	if strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
-	}
-	if t := r.URL.Query().Get("token"); t != "" {
-		return t
-	}
-	if c, err := r.Cookie("uh_token"); err == nil {
-		return c.Value
 	}
 	return ""
 }

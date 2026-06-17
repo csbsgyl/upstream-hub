@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/worryzyy/upstream-hub/internal/storage"
@@ -29,13 +30,21 @@ func newWebhook(raw string) (*webhook, error) {
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
 		return nil, err
 	}
-	if cfg.URL == "" {
-		return nil, errors.New("webhook url is required")
+	var err error
+	cfg.URL, err = normalizeNotifyURL(cfg.URL, "webhook url")
+	if err != nil {
+		return nil, err
 	}
 	if cfg.Method == "" {
 		cfg.Method = "POST"
 	}
-	return &webhook{cfg: cfg, http: resty.New()}, nil
+	cfg.Method = strings.ToUpper(strings.TrimSpace(cfg.Method))
+	switch cfg.Method {
+	case "GET", "POST", "PUT":
+	default:
+		return nil, errors.New("webhook method must be GET, POST, or PUT")
+	}
+	return &webhook{cfg: cfg, http: newNotifyHTTPClient()}, nil
 }
 
 func (w *webhook) Type() storage.NotificationChannelType { return storage.NotifyWebhook }

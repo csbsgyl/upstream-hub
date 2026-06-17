@@ -34,10 +34,12 @@ func newDingTalk(raw string) (*dingTalk, error) {
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
 		return nil, err
 	}
-	if cfg.WebhookURL == "" {
-		return nil, errors.New("dingtalk webhook_url is required")
+	var err error
+	cfg.WebhookURL, err = normalizeNotifyURL(cfg.WebhookURL, "dingtalk webhook_url")
+	if err != nil {
+		return nil, err
 	}
-	return &dingTalk{cfg: cfg, http: resty.New()}, nil
+	return &dingTalk{cfg: cfg, http: newNotifyHTTPClient()}, nil
 }
 
 func (d *dingTalk) Type() storage.NotificationChannelType { return storage.NotifyDingTalk }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -84,6 +85,10 @@ type CreateInput struct {
 }
 
 func (s *Service) Create(in CreateInput) (*storage.Channel, error) {
+	siteURL, err := normalizeSiteURL(in.SiteURL)
+	if err != nil {
+		return nil, err
+	}
 	mode := in.CredentialMode
 	if mode == "" {
 		mode = storage.CredentialModePassword
@@ -103,7 +108,7 @@ func (s *Service) Create(in CreateInput) (*storage.Channel, error) {
 	c := &storage.Channel{
 		Name:             in.Name,
 		Type:             in.Type,
-		SiteURL:          in.SiteURL,
+		SiteURL:          siteURL,
 		Username:         in.Username,
 		PasswordCipher:   enc,
 		CredentialMode:   mode,
@@ -145,7 +150,11 @@ func (s *Service) Update(id uint, in UpdateInput) (*storage.Channel, error) {
 		c.Name = *in.Name
 	}
 	if in.SiteURL != nil {
-		c.SiteURL = *in.SiteURL
+		siteURL, err := normalizeSiteURL(*in.SiteURL)
+		if err != nil {
+			return nil, err
+		}
+		c.SiteURL = siteURL
 	}
 	if in.Username != nil {
 		c.Username = *in.Username
@@ -239,6 +248,18 @@ func selectRawCredential(mode storage.CredentialMode, password, tokenCredential 
 	default:
 		return "", fmt.Errorf("unknown credential mode: %s", mode)
 	}
+}
+
+func normalizeSiteURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", errors.New("site url is required")
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", errors.New("site url must be an absolute http(s) URL")
+	}
+	return strings.TrimRight(raw, "/"), nil
 }
 
 // validateCredential 在保存前对凭据做语法 / 必填字段校验，能尽早把无效输入挡在 connector 外。
