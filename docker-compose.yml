@@ -62,10 +62,15 @@ services:
       UPSTREAMHUB_NOTIFICATIONS_FAILURE_COOLDOWN_MINUTES: ${UPSTREAMHUB_NOTIFICATIONS_FAILURE_COOLDOWN_MINUTES:-10}
       UPSTREAMHUB_NOTIFICATIONS_SEND_MAX_ATTEMPTS: ${UPSTREAMHUB_NOTIFICATIONS_SEND_MAX_ATTEMPTS:-1}
       UPSTREAMHUB_BACKUP_DIR: /app/backups
+      UPSTREAMHUB_UPDATE_ENABLED: ${UPSTREAMHUB_UPDATE_ENABLED:-true}
+      UPSTREAMHUB_UPDATE_HOST_DIR: ${UPSTREAMHUB_UPDATE_HOST_DIR:-}
+      UPSTREAMHUB_UPDATE_IMAGE: ${UPSTREAMHUB_UPDATE_IMAGE:-upstream-hub:local}
+      UPSTREAMHUB_UPDATE_DOCKER_SOCKET: /var/run/docker.sock
     ports:
       - "${UPSTREAMHUB_HTTP_PORT:-8080}:8418"
     volumes:
       - ./backups:/app/backups
+      - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8418/healthz"]
       interval: 15s

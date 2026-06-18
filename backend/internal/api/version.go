@@ -13,16 +13,17 @@ import (
 )
 
 type versionCheckResponse struct {
-	Current       appversion.Info `json:"current"`
-	LatestCommit  string          `json:"latest_commit,omitempty"`
-	LatestShort   string          `json:"latest_short,omitempty"`
-	LatestHTMLURL string          `json:"latest_html_url,omitempty"`
-	CompareURL    string          `json:"compare_url,omitempty"`
-	UpdateURL     string          `json:"update_url"`
-	UpdateCommand string          `json:"update_command"`
-	HasUpdate     bool            `json:"has_update"`
-	CheckError    string          `json:"check_error,omitempty"`
-	CheckedAt     time.Time       `json:"checked_at"`
+	Current       appversion.Info  `json:"current"`
+	LatestCommit  string           `json:"latest_commit,omitempty"`
+	LatestShort   string           `json:"latest_short,omitempty"`
+	LatestHTMLURL string           `json:"latest_html_url,omitempty"`
+	CompareURL    string           `json:"compare_url,omitempty"`
+	UpdateURL     string           `json:"update_url"`
+	UpdateCommand string           `json:"update_command"`
+	AutoUpdate    updateCapability `json:"auto_update"`
+	HasUpdate     bool             `json:"has_update"`
+	CheckError    string           `json:"check_error,omitempty"`
+	CheckedAt     time.Time        `json:"checked_at"`
 }
 
 type cachedVersionCheck struct {
@@ -35,19 +36,20 @@ var (
 	versionCheckCache = map[string]cachedVersionCheck{}
 )
 
-func registerVersion(g *gin.RouterGroup) {
+func registerVersion(g *gin.RouterGroup, d *Deps) {
 	g.GET("/version", func(c *gin.Context) {
 		c.JSON(http.StatusOK, appversion.Current())
 	})
-	g.GET("/version/check", checkVersion)
+	g.GET("/version/check", func(c *gin.Context) { checkVersion(c, d) })
 }
 
-func checkVersion(c *gin.Context) {
+func checkVersion(c *gin.Context, d *Deps) {
 	current := appversion.Current()
 	resp := versionCheckResponse{
 		Current:       current,
 		UpdateURL:     current.RepoURL,
 		UpdateCommand: "git pull && ./scripts/deploy.sh",
+		AutoUpdate:    detectUpdateCapability(d),
 		CheckedAt:     time.Now(),
 	}
 

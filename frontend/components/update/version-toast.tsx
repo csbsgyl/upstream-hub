@@ -34,7 +34,9 @@ export function VersionToast() {
     const latest = data.latest_short ?? "unknown"
     const current = data.current.short_commit
     toast.warning(`发现新版本 ${latest}`, {
-      description: `当前 ${current}，设置里可以查看更新信息和部署命令。`,
+      description: data.auto_update?.available
+        ? `当前 ${current}，可以在设置里一键更新。`
+        : `当前 ${current}，设置里会显示更新环境缺少什么。`,
       action: {
         label: "去设置",
         onClick: () => {

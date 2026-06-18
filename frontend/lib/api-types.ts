@@ -183,6 +183,12 @@ export interface VersionCheck {
   compare_url?: string
   update_url: string
   update_command: string
+  auto_update: {
+    available: boolean
+    reason?: string
+    host_dir?: string
+    image?: string
+  }
   has_update: boolean
   check_error?: string
   checked_at: string
@@ -227,6 +233,15 @@ export interface OpsScanResult {
   job: "sync" | "balances" | "rates"
   channels: number
   message: string
+  started_at: string
+}
+
+export interface OpsUpdateResult {
+  ok: boolean
+  started: boolean
+  message: string
+  container_name: string
+  log_file: string
   started_at: string
 }
 

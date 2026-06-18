@@ -32,6 +32,7 @@ func registerOps(g *gin.RouterGroup, d *Deps) {
 	g.POST("/ops/scan/sync", func(c *gin.Context) { startOpsScan(c, d, "sync") })
 	g.POST("/ops/scan/balances", func(c *gin.Context) { startOpsScan(c, d, "balances") })
 	g.POST("/ops/scan/rates", func(c *gin.Context) { startOpsScan(c, d, "rates") })
+	g.POST("/ops/update", func(c *gin.Context) { startSystemUpdate(c, d) })
 }
 
 type backupState struct {

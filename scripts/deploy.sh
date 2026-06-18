@@ -95,9 +95,39 @@ EOF
   c_warn "请妥善保存 .env —— APP_SECRET 一旦丢失，已加密的渠道凭据将无法解密！"
 fi
 
+# ---- 2.1 记录宿主机项目目录，供网页一键更新使用 ----
+set_env_kv() {
+  local key="$1"
+  local value="$2"
+  local escaped
+  escaped="$(printf '%s' "${value}" | sed 's/[&|]/\\&/g')"
+  if grep -qE "^${key}=" .env 2>/dev/null; then
+    sed -i.bak -e "s|^${key}=.*|${key}=${escaped}|" .env
+    rm -f .env.bak
+  else
+    printf '\n%s=%s\n' "${key}" "${value}" >> .env
+  fi
+}
+
+ensure_env_kv() {
+  local key="$1"
+  local value="$2"
+  if grep -qE "^${key}=" .env 2>/dev/null; then
+    if [[ -n "$(grep -E "^${key}=" .env | tail -n 1 | cut -d= -f2-)" ]]; then
+      return
+    fi
+  fi
+  set_env_kv "${key}" "${value}"
+}
+
+ensure_env_kv "UPSTREAMHUB_UPDATE_ENABLED" "true"
+set_env_kv "UPSTREAMHUB_UPDATE_HOST_DIR" "${ROOT_DIR}"
+ensure_env_kv "UPSTREAMHUB_UPDATE_IMAGE" "upstream-hub:local"
+
 # ---- 3. 拉取最新代码 ----
 if [[ -d .git ]]; then
   c_info "拉取最新代码 …"
+  git config --global --add safe.directory "${ROOT_DIR}" >/dev/null 2>&1 || true
   CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
   if git pull --ff-only origin "${CURRENT_BRANCH}"; then
     c_ok "代码已更新到最新（${CURRENT_BRANCH}）"

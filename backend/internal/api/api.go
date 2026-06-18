@@ -63,7 +63,7 @@ func Register(r *gin.Engine, d *Deps) {
 		api.Use(d.Auth.Middleware())
 	}
 	{
-		registerVersion(api)
+		registerVersion(api, d)
 		registerAuth(api, d)
 		registerChannels(api, d)
 		registerCaptchas(api, d)

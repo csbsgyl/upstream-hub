@@ -25,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useConfirm } from "@/components/ui/confirm-dialog"
 import { apiFetch, getToken } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { useAuditLogs, useFailedNotificationLogs, useOpsStatus, useVersionCheck } from "@/lib/queries"
@@ -32,7 +33,7 @@ import { useTriggerRefresh } from "@/lib/refresh-context"
 import { relativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { ComponentType, ReactNode } from "react"
-import type { BackupState, OpsBackupResponse, OpsRetentionResult, OpsScanResult } from "@/lib/api-types"
+import type { BackupState, OpsBackupResponse, OpsRetentionResult, OpsScanResult, OpsUpdateResult } from "@/lib/api-types"
 
 type BusyAction =
   | "backup"
@@ -43,6 +44,7 @@ type BusyAction =
   | "scan-balances"
   | "scan-rates"
   | "copy-update"
+  | "update"
   | `download-${string}`
 
 function asText(v: unknown, fallback = "-") {
@@ -191,6 +193,8 @@ export default function SettingsPage() {
   const [busyRetry, setBusyRetry] = useState<number | null>(null)
   const [busy, setBusy] = useState<BusyAction | null>(null)
   const [lastRetention, setLastRetention] = useState<OpsRetentionResult | null>(null)
+  const [lastUpdate, setLastUpdate] = useState<OpsUpdateResult | null>(null)
+  const { confirm, dialog } = useConfirm()
 
   const s = status.data
   const latestBackup = s?.backups?.[0] ?? null
@@ -216,6 +220,8 @@ export default function SettingsPage() {
         ? "检测到新版本"
         : "当前已是最新"
   const versionBadge = version.loading ? "检查中" : versionError ? "检查失败" : versionInfo?.has_update ? "可更新" : "无需更新"
+  const autoUpdate = versionInfo?.auto_update
+  const autoUpdateReady = Boolean(versionInfo?.has_update && autoUpdate?.available)
 
   const diagnosticsSummary = useMemo(() => {
     if (!s) return ""
@@ -334,6 +340,30 @@ export default function SettingsPage() {
     }).catch((e: Error) => toast.error(e.message || "复制失败"))
   }
 
+  async function runUpdate() {
+    if (!autoUpdate?.available) {
+      toast.error(autoUpdate?.reason || "当前部署环境不支持网页一键更新")
+      return
+    }
+    const ok = await confirm({
+      title: "立即执行服务器更新？",
+      description:
+        "系统会在后台拉取最新代码、备份数据库并重建 Docker 服务。更新期间页面可能短暂断开，完成后刷新页面即可。",
+      confirmLabel: "开始更新",
+      cancelLabel: "取消",
+    })
+    if (!ok) return
+    await runAction("update", async () => {
+      const res = await apiFetch<OpsUpdateResult>("/ops/update", { method: "POST" })
+      setLastUpdate(res)
+      toast.success(res.message || "更新任务已启动", {
+        description: res.log_file ? `日志：${res.log_file}` : undefined,
+        duration: 9000,
+      })
+      reloadOps()
+    }).catch((e: Error) => toast.error(e.message || "更新启动失败"))
+  }
+
   async function scan(job: "sync" | "balances" | "rates") {
     const key = job === "sync" ? "scan-sync" : job === "balances" ? "scan-balances" : "scan-rates"
     await runAction(key, async () => {
@@ -429,9 +459,24 @@ export default function SettingsPage() {
             <StatTile
               icon={ArrowUpRight}
               label="更新状态"
-              value={versionError ? "未知" : versionInfo?.has_update ? "有更新" : "最新"}
-              detail={versionError || versionInfo?.update_command || "-"}
-              tone={versionError ? "danger" : versionInfo?.has_update ? "warning" : "success"}
+              value={
+                versionError
+                  ? "未知"
+                  : versionInfo?.has_update
+                    ? autoUpdate?.available
+                      ? "可一键更新"
+                      : "需先升级环境"
+                    : "最新"
+              }
+              detail={
+                versionError ||
+                (versionInfo?.has_update
+                  ? autoUpdate?.available
+                    ? "已具备网页更新能力"
+                    : autoUpdate?.reason || "当前部署环境未启用一键更新"
+                  : "无需操作")
+              }
+              tone={versionError || (versionInfo?.has_update && !autoUpdate?.available) ? "danger" : versionInfo?.has_update ? "warning" : "success"}
             />
             <StatTile
               icon={FileJson}
@@ -443,6 +488,16 @@ export default function SettingsPage() {
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
+            <ActionButton
+              busy={busy}
+              busyKey="update"
+              className="gap-1.5"
+              disabled={!autoUpdateReady}
+              onClick={runUpdate}
+            >
+              <RefreshCw className="size-3.5" />
+              立即更新
+            </ActionButton>
             <Button
               type="button"
               variant="outline"
@@ -456,7 +511,7 @@ export default function SettingsPage() {
             </Button>
             <ActionButton busy={busy} busyKey="copy-update" variant="outline" onClick={copyUpdateCommand}>
               <ClipboardCopy className="size-3.5" />
-              复制更新命令
+              复制备用命令
             </ActionButton>
             <Button
               type="button"
@@ -480,6 +535,15 @@ export default function SettingsPage() {
               )}
             </span>
           </div>
+          {versionInfo?.has_update && !autoUpdate?.available ? (
+            <p className="mt-2 rounded-md border border-danger/20 bg-danger/5 px-3 py-2 text-xs leading-relaxed text-danger">
+              一键更新暂不可用：{autoUpdate?.reason || "当前部署环境缺少自动更新能力"}。先在服务器执行一次备用更新命令，升级后以后就可以直接点“立即更新”。
+            </p>
+          ) : lastUpdate ? (
+            <p className="mt-2 rounded-md border border-success/20 bg-success/5 px-3 py-2 text-xs leading-relaxed text-success">
+              更新任务已提交：{lastUpdate.container_name}，日志文件 {lastUpdate.log_file}。服务重建时页面可能短暂断开。
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -784,6 +848,7 @@ export default function SettingsPage() {
           </Card>
         </aside>
       </div>
+      {dialog}
     </section>
   )
 }

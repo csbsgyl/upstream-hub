@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -176,5 +177,43 @@ func TestDBDSN(t *testing.T) {
 	}
 	if !strings.Contains(got, "sslmode=disable") {
 		t.Fatalf("dbDSN = %q, want sslmode", got)
+	}
+}
+
+func TestDockerUpdateArgsMountsHostRepoAndSocket(t *testing.T) {
+	args := dockerUpdateArgs("/srv/upstream-hub", "/var/run/docker.sock", "upstream-hub:local", "backups/update.log")
+	joined := strings.Join(args, "\n")
+	for _, want := range []string{
+		"run",
+		"-d",
+		"--name\nupstreamhub-updater",
+		"type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock",
+		"type=bind,source=/srv/upstream-hub,target=/srv/upstream-hub",
+		"upstream-hub:local",
+		"bash ./scripts/deploy.sh",
+		"backups/update.log",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("docker args %q do not contain %q", joined, want)
+		}
+	}
+}
+
+func TestCleanDockerPath(t *testing.T) {
+	got := cleanDockerPath(`C:\srv\upstream-hub`)
+	want := filepath.Clean("C:/srv/upstream-hub")
+	if got != want {
+		t.Fatalf("cleanDockerPath() = %q, want %q", got, want)
+	}
+}
+
+func TestUpdateEnabledEnv(t *testing.T) {
+	t.Setenv("UPSTREAMHUB_UPDATE_ENABLED", "false")
+	if updateEnabled() {
+		t.Fatal("updateEnabled() = true, want false")
+	}
+	t.Setenv("UPSTREAMHUB_UPDATE_ENABLED", "true")
+	if !updateEnabled() {
+		t.Fatal("updateEnabled() = false, want true")
 	}
 }
