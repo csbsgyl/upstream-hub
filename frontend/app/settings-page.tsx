@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import {
   Activity,
@@ -150,6 +150,108 @@ function StatTile({
   )
 }
 
+function UpdateActivityPanel({
+  running,
+  result,
+  startedAt,
+}: {
+  running: boolean
+  result: OpsUpdateResult | null
+  startedAt: string | null
+}) {
+  const steps = [
+    {
+      label: "启动任务",
+      detail: result?.container_name || "创建 updater 容器",
+      state: result ? "done" : "active",
+    },
+    {
+      label: "备份数据",
+      detail: "写入 backups 目录",
+      state: result ? "active" : "pending",
+    },
+    {
+      label: "拉取代码",
+      detail: "同步仓库最新提交",
+      state: result ? "active" : "pending",
+    },
+    {
+      label: "重建服务",
+      detail: "Docker 服务会短暂重启",
+      state: result ? "active" : "pending",
+    },
+  ] satisfies Array<{ label: string; detail: string; state: "active" | "done" | "pending" }>
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-lg border border-brand/20 bg-brand/5 px-3 py-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="relative flex size-9 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand ring-1 ring-brand/20">
+            <span className="absolute inset-0 rounded-md bg-brand/20 opacity-60 animate-ping" />
+            <RefreshCw className="relative size-4 animate-spin" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-foreground">
+              {running ? "正在启动更新任务" : "更新任务已交给后台执行"}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              {running
+                ? "正在请求后端启动 updater，成功后会继续备份、拉取代码并重建服务。"
+                : `服务可能会短暂断开；任务从 ${startedAt ? relativeTime(startedAt) : "刚刚"} 开始。`}
+            </p>
+          </div>
+        </div>
+        <Badge className="w-fit bg-brand/10 text-brand ring-1 ring-brand/20">
+          后台更新中
+        </Badge>
+      </div>
+
+      <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-background ring-1 ring-border/70">
+        <div
+          className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-linear-to-r from-transparent via-brand to-transparent"
+          style={{ animation: "upstream-update-sweep 1.45s ease-in-out infinite" }}
+        />
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-4">
+        {steps.map((step) => (
+          <div key={step.label} className="rounded-md border border-border bg-background/75 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "relative flex size-2.5 shrink-0 items-center justify-center rounded-full",
+                  step.state === "done"
+                    ? "bg-success text-success-foreground"
+                    : step.state === "active"
+                      ? "bg-brand"
+                      : "bg-muted-foreground/40",
+                )}
+              >
+                {step.state === "done" ? (
+                  <CheckCircle2 className="size-2.5" />
+                ) : step.state === "active" ? (
+                  <span className="absolute inset-0 rounded-full bg-brand opacity-40 animate-ping" />
+                ) : null}
+              </span>
+              <p className="truncate text-xs font-medium text-foreground">{step.label}</p>
+            </div>
+            <p className="mt-1 truncate text-[11px] text-muted-foreground">{step.detail}</p>
+          </div>
+        ))}
+      </div>
+
+      {result ? (
+        <div className="mt-3 rounded-md border border-success/20 bg-success/5 px-3 py-2 text-xs leading-relaxed text-success">
+          <span className="font-medium">已提交：</span>
+          {result.container_name}
+          {" · 日志 "}
+          <span className="font-mono">{result.log_file}</span>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function ActionButton({
   busy,
   busyKey,
@@ -194,6 +296,7 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState<BusyAction | null>(null)
   const [lastRetention, setLastRetention] = useState<OpsRetentionResult | null>(null)
   const [lastUpdate, setLastUpdate] = useState<OpsUpdateResult | null>(null)
+  const [updateStartedAt, setUpdateStartedAt] = useState<string | null>(null)
   const { confirm, dialog } = useConfirm()
 
   const s = status.data
@@ -222,6 +325,23 @@ export default function SettingsPage() {
   const versionBadge = version.loading ? "检查中" : versionError ? "检查失败" : versionInfo?.has_update ? "可更新" : "无需更新"
   const autoUpdate = versionInfo?.auto_update
   const autoUpdateReady = Boolean(versionInfo?.has_update && autoUpdate?.available)
+  const updateActive = busy === "update" || Boolean(lastUpdate)
+
+  useEffect(() => {
+    if (!version.loading && version.data && !version.data.has_update && lastUpdate) {
+      setLastUpdate(null)
+      setUpdateStartedAt(null)
+    }
+  }, [lastUpdate, version.data, version.loading])
+
+  useEffect(() => {
+    if (!lastUpdate) return
+    const timer = window.setTimeout(() => {
+      setLastUpdate(null)
+      setUpdateStartedAt(null)
+    }, 10 * 60 * 1000)
+    return () => window.clearTimeout(timer)
+  }, [lastUpdate])
 
   const diagnosticsSummary = useMemo(() => {
     if (!s) return ""
@@ -353,6 +473,8 @@ export default function SettingsPage() {
       cancelLabel: "取消",
     })
     if (!ok) return
+    setLastUpdate(null)
+    setUpdateStartedAt(new Date().toISOString())
     await runAction("update", async () => {
       const res = await apiFetch<OpsUpdateResult>("/ops/update", { method: "POST" })
       setLastUpdate(res)
@@ -361,7 +483,11 @@ export default function SettingsPage() {
         duration: 9000,
       })
       reloadOps()
-    }).catch((e: Error) => toast.error(e.message || "更新启动失败"))
+    }).catch((e: Error) => {
+      setLastUpdate(null)
+      setUpdateStartedAt(null)
+      toast.error(e.message || "更新启动失败")
+    })
   }
 
   async function scan(job: "sync" | "balances" | "rates") {
@@ -492,11 +618,15 @@ export default function SettingsPage() {
               busy={busy}
               busyKey="update"
               className="gap-1.5"
-              disabled={!autoUpdateReady}
+              disabled={!autoUpdateReady || updateActive}
               onClick={runUpdate}
             >
-              <RefreshCw className="size-3.5" />
-              立即更新
+              {busy === "update" ? null : lastUpdate ? (
+                <RefreshCw className="size-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="size-3.5" />
+              )}
+              {busy === "update" ? "启动中" : lastUpdate ? "后台更新" : "立即更新"}
             </ActionButton>
             <Button
               type="button"
@@ -539,10 +669,12 @@ export default function SettingsPage() {
             <p className="mt-2 rounded-md border border-danger/20 bg-danger/5 px-3 py-2 text-xs leading-relaxed text-danger">
               一键更新暂不可用：{autoUpdate?.reason || "当前部署环境缺少自动更新能力"}。先在服务器执行一次备用更新命令，升级后以后就可以直接点“立即更新”。
             </p>
-          ) : lastUpdate ? (
-            <p className="mt-2 rounded-md border border-success/20 bg-success/5 px-3 py-2 text-xs leading-relaxed text-success">
-              更新任务已提交：{lastUpdate.container_name}，日志文件 {lastUpdate.log_file}。服务重建时页面可能短暂断开。
-            </p>
+          ) : updateActive ? (
+            <UpdateActivityPanel
+              running={busy === "update"}
+              result={lastUpdate}
+              startedAt={lastUpdate?.started_at ?? updateStartedAt}
+            />
           ) : null}
         </CardContent>
       </Card>

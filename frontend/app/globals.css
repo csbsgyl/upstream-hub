@@ -147,3 +147,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes upstream-update-sweep {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(330%);
+  }
+}
