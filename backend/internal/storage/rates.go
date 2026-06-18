@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -111,49 +113,87 @@ func (r *Rates) BalanceHistory(channelID uint, limit int) ([]BalanceSnapshot, er
 	return list, nil
 }
 
-// DailyAggregate 一天的聚合余额（所有渠道之和）。
-type DailyAggregate struct {
+// BalanceTrendPoint 是首页余额趋势的聚合点。
+//
+// At 是当前前端使用的采样桶时间；Day 保留给旧前端缓存兼容。
+type BalanceTrendPoint struct {
+	At      time.Time `json:"at"`
 	Day     time.Time `json:"day"`
 	Balance float64   `json:"balance"`
 }
 
-// AggregateBalanceTrend 取最近 N 天的"日内最后一次余额"按渠道之和，作为总余额趋势。
-//
-// 实现：对每个 (channel_id, day) 取该天最后一次 BalanceSnapshot 的余额，再按 day 求和。
-// 没有采样的日子返回 0；调用方应自己外推 / 留空。
-func (r *Rates) AggregateBalanceTrend(days int) ([]DailyAggregate, error) {
-	if days <= 0 {
-		days = 7
+type BalanceTrendSpec struct {
+	Range      string
+	Since      time.Time
+	BucketExpr string
+}
+
+func BalanceTrendSpecForRange(raw string) (BalanceTrendSpec, bool) {
+	return balanceTrendSpecForRange(raw, time.Now())
+}
+
+func balanceTrendSpecForRange(raw string, now time.Time) (BalanceTrendSpec, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "24h":
+		return BalanceTrendSpec{
+			Range:      "24h",
+			Since:      now.Add(-24 * time.Hour).Truncate(5 * time.Minute),
+			BucketExpr: "date_bin(interval '5 minutes', sampled_at, '2000-01-01 00:00:00+00'::timestamptz)",
+		}, true
+	case "7d":
+		return BalanceTrendSpec{
+			Range:      "7d",
+			Since:      startOfDay(now).AddDate(0, 0, -6),
+			BucketExpr: "date_trunc('hour', sampled_at)",
+		}, true
+	case "30d":
+		return BalanceTrendSpec{
+			Range:      "30d",
+			Since:      startOfDay(now).AddDate(0, 0, -29),
+			BucketExpr: "date_trunc('day', sampled_at)",
+		}, true
+	default:
+		return BalanceTrendSpec{}, false
 	}
-	since := time.Now().AddDate(0, 0, -(days - 1)).Truncate(24 * time.Hour)
+}
+
+func startOfDay(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
+}
+
+// AggregateBalanceTrend 按时间范围聚合总余额趋势。
+//
+// 24h 使用 5 分钟桶对齐后台默认同步频率；7d 使用小时桶；30d 使用天桶。
+// 每个桶内先取单个渠道最后一次余额，再把所有渠道相加，避免同一渠道在同一桶内重复计入。
+func (r *Rates) AggregateBalanceTrend(spec BalanceTrendSpec) ([]BalanceTrendPoint, error) {
 	type row struct {
-		Day     time.Time
+		At      time.Time
 		Balance float64
 	}
 	var rows []row
-	err := r.db.Raw(`
-		WITH per_day AS (
-			SELECT
-				channel_id,
-				date_trunc('day', sampled_at) AS day,
-				MAX(sampled_at)               AS last_at
+	query := fmt.Sprintf(`
+		WITH sampled AS (
+			SELECT id, channel_id, sampled_at, balance, %[1]s AS bucket
 			FROM balance_snapshots
 			WHERE sampled_at >= ?
-			GROUP BY channel_id, date_trunc('day', sampled_at)
+		),
+		latest AS (
+			SELECT DISTINCT ON (channel_id, bucket) channel_id, bucket, balance
+			FROM sampled
+			ORDER BY channel_id, bucket, sampled_at DESC, id DESC
 		)
-		SELECT pd.day AS day, SUM(bs.balance) AS balance
-		FROM per_day pd
-		JOIN balance_snapshots bs
-		  ON bs.channel_id = pd.channel_id AND bs.sampled_at = pd.last_at
-		GROUP BY pd.day
-		ORDER BY pd.day ASC
-	`, since).Scan(&rows).Error
-	if err != nil {
+		SELECT bucket AS at, SUM(balance) AS balance
+		FROM latest
+		GROUP BY bucket
+		ORDER BY bucket ASC
+	`, spec.BucketExpr)
+	if err := r.db.Raw(query, spec.Since).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	out := make([]DailyAggregate, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, DailyAggregate{Day: r.Day, Balance: r.Balance})
+	out := make([]BalanceTrendPoint, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, BalanceTrendPoint{At: row.At, Day: row.At, Balance: row.Balance})
 	}
 	return out, nil
 }

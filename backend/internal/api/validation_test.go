@@ -127,6 +127,29 @@ func TestQueryIntClamped(t *testing.T) {
 	}
 }
 
+func TestBalanceTrendRangeFromLegacyDays(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name string
+		url  string
+		want string
+	}{
+		{name: "default", url: "/", want: "24h"},
+		{name: "one day", url: "/?days=1", want: "24h"},
+		{name: "week", url: "/?days=7", want: "7d"},
+		{name: "month", url: "/?days=30", want: "30d"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest("GET", tc.url, nil)
+			if got := balanceTrendRangeFromLegacyDays(c); got != tc.want {
+				t.Fatalf("balanceTrendRangeFromLegacyDays() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSafeBackupName(t *testing.T) {
 	valid, err := safeBackupName("upstream-hub-20260618-120000.sql.gz")
 	if err != nil || valid != "upstream-hub-20260618-120000.sql.gz" {

@@ -5,6 +5,7 @@ import { apiFetch } from "@/lib/api"
 import { useRefreshTick } from "@/lib/refresh-context"
 import type {
   BalanceTrendPoint,
+  BalanceTrendRange,
   AuditLog,
   CaptchaConfig,
   Channel,
@@ -124,8 +125,8 @@ export function useDashboardSummary() {
   return useApi<DashboardSummary>("/dashboard/summary")
 }
 
-export function useBalanceTrend(days = 7) {
-  return useApi<BalanceTrendPoint[]>(`/dashboard/balance-trend?days=${days}`)
+export function useBalanceTrend(range: BalanceTrendRange = "24h") {
+  return useApi<BalanceTrendPoint[]>(`/dashboard/balance-trend?range=${range}`)
 }
 
 export function useChannels() {

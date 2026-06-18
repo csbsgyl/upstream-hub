@@ -1,10 +1,13 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useBalanceTrend, useDashboardSummary } from "@/lib/queries"
 import { money } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import type { BalanceTrendRange } from "@/lib/api-types"
 
 function formatY(n: number) {
   if (n === 0) return "$0"
@@ -26,19 +29,54 @@ function niceCeil(n: number): number {
   return step * mag
 }
 
-function formatDay(iso: string) {
+const RANGE_OPTIONS: Array<{ value: BalanceTrendRange; label: string; meta: string }> = [
+  { value: "24h", label: "24小时", meta: "5分钟采样" },
+  { value: "7d", label: "7天", meta: "小时聚合" },
+  { value: "30d", label: "1个月", meta: "日聚合" },
+]
+
+function formatDate(iso: string) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   return `${d.getMonth() + 1}月${d.getDate()}日`
 }
 
-interface TooltipPayloadItem { value: number }
+function formatTick(iso: string, range: BalanceTrendRange) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  if (range === "24h") {
+    return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })
+  }
+  if (range === "7d") {
+    return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:00`
+  }
+  return formatDate(iso)
+}
+
+function formatTooltipTime(iso: string, range: BalanceTrendRange) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  if (range === "30d") return formatDate(iso)
+  return `${formatDate(iso)} ${d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })}`
+}
+
+interface ChartPoint {
+  at: string
+  tooltipLabel: string
+  balance: number
+}
+
+interface TooltipPayloadItem {
+  value: number
+  payload?: ChartPoint
+}
 
 function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: TooltipPayloadItem[]; label?: string }) {
   if (!active || !payload?.length) return null
+  const point = payload[0].payload
   return (
     <div className="rounded-lg border border-border bg-popover px-3 py-2 shadow-md">
-      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-xs text-muted-foreground">{point?.tooltipLabel ?? label}</p>
       <p className="text-sm font-semibold text-foreground">
         {"$"}{payload[0].value.toLocaleString("en-US")}
       </p>
@@ -47,22 +85,52 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 }
 
 export function BalanceOverview() {
-  const trend = useBalanceTrend(7)
+  const [range, setRange] = useState<BalanceTrendRange>("24h")
+  const trend = useBalanceTrend(range)
   const summary = useDashboardSummary()
+  const activeRange = RANGE_OPTIONS.find((item) => item.value === range) ?? RANGE_OPTIONS[0]
 
-  const data = (trend.data ?? []).map((p) => ({
-    day: formatDay(p.day),
-    balance: p.balance,
-  }))
+  const data = useMemo(
+    () =>
+      (trend.data ?? []).map((p) => {
+        const at = p.at ?? p.day ?? ""
+        return {
+          at,
+          tooltipLabel: formatTooltipTime(at, range),
+          balance: p.balance,
+        }
+      }),
+    [trend.data, range],
+  )
 
   const channels = summary.data?.channels ?? []
   const yMax = data.length > 0 ? niceCeil(Math.max(...data.map((d) => d.balance))) : 10
+  const showDots = data.length <= 40
 
   return (
     <Card className="border border-border shadow-none lg:h-100">
-      <CardHeader className="flex shrink-0 flex-row items-center justify-between pb-2">
-        <CardTitle className="text-base font-semibold">{"余额概览"}</CardTitle>
-        <span className="text-xs text-muted-foreground">{"最近 7 天"}</span>
+      <CardHeader className="flex shrink-0 flex-col gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <CardTitle className="text-base font-semibold">{"余额概览"}</CardTitle>
+          <p className="mt-1 text-xs text-muted-foreground">{`最近 ${activeRange.label} · ${activeRange.meta}`}</p>
+        </div>
+        <ToggleGroup
+          type="single"
+          value={range}
+          onValueChange={(value) => {
+            if (value) setRange(value as BalanceTrendRange)
+          }}
+          variant="outline"
+          size="sm"
+          className="grid w-full grid-cols-3 sm:w-auto"
+          aria-label="余额趋势时间范围"
+        >
+          {RANGE_OPTIONS.map((item) => (
+            <ToggleGroupItem key={item.value} value={item.value} className="min-w-16 px-2 text-xs">
+              {item.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 w-full flex-1">
@@ -77,11 +145,13 @@ export function BalanceOverview() {
               <LineChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                 <XAxis
-                  dataKey="day"
+                  dataKey="at"
                   tickLine={false}
                   axisLine={false}
                   tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
+                  tickFormatter={(value) => formatTick(String(value), range)}
                   dy={8}
+                  minTickGap={range === "24h" ? 28 : 20}
                 />
                 <YAxis
                   tickLine={false}
@@ -97,7 +167,7 @@ export function BalanceOverview() {
                   dataKey="balance"
                   stroke="var(--brand)"
                   strokeWidth={2}
-                  dot={{ r: 4, fill: "var(--background)", stroke: "var(--brand)", strokeWidth: 2 }}
+                  dot={showDots ? { r: 4, fill: "var(--background)", stroke: "var(--brand)", strokeWidth: 2 } : false}
                   activeDot={{ r: 5, fill: "var(--brand)", strokeWidth: 0 }}
                 />
               </LineChart>

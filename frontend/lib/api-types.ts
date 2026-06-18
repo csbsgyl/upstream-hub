@@ -24,6 +24,8 @@ export type CaptchaProviderType =
 
 export type MonitorJob = "login" | "balance" | "rates"
 
+export type BalanceTrendRange = "24h" | "7d" | "30d"
+
 export type NotificationEvent =
   | "balance_low"
   | "rate_changed"
@@ -156,7 +158,8 @@ export interface DashboardSummary {
 }
 
 export interface BalanceTrendPoint {
-  day: string
+  at?: string
+  day?: string
   balance: number
 }
 

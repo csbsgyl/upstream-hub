@@ -1,9 +1,12 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/worryzyy/upstream-hub/internal/storage"
 )
 
 // registerDashboard 提供首页所需聚合视图。
@@ -89,11 +92,34 @@ func dashboardSummary(c *gin.Context, d *Deps) {
 }
 
 func dashboardBalanceTrend(c *gin.Context, d *Deps) {
-	days := queryIntClamped(c, "days", 7, 1, 90)
-	trend, err := d.Rates.AggregateBalanceTrend(days)
+	key := strings.TrimSpace(c.Query("range"))
+	if key == "" {
+		key = balanceTrendRangeFromLegacyDays(c)
+	}
+	spec, ok := storage.BalanceTrendSpecForRange(key)
+	if !ok {
+		fail(c, http.StatusBadRequest, errors.New("range must be one of 24h, 7d, 30d"))
+		return
+	}
+	trend, err := d.Rates.AggregateBalanceTrend(spec)
 	if err != nil {
 		fail(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": trend})
+}
+
+func balanceTrendRangeFromLegacyDays(c *gin.Context) string {
+	if strings.TrimSpace(c.Query("days")) == "" {
+		return "24h"
+	}
+	days := queryIntClamped(c, "days", 7, 1, 90)
+	switch {
+	case days <= 1:
+		return "24h"
+	case days <= 7:
+		return "7d"
+	default:
+		return "30d"
+	}
 }
