@@ -447,6 +447,20 @@ export function ChannelCards() {
                       {meta.label}
                     </span>
                   </Row>
+                  <Row label="健康分">
+                    <span
+                      className={cn(
+                        "tabular-nums",
+                        (c.health_score ?? 0) >= 80
+                          ? "text-success"
+                          : (c.health_score ?? 0) >= 60
+                            ? "text-warning"
+                            : "text-danger",
+                      )}
+                    >
+                      {c.health_score ?? "—"}
+                    </span>
+                  </Row>
                   <Row label="上次更新">{relativeTime(c.last_balance_at ?? c.updated_at)}</Row>
                   {c.last_error ? (
                     <div className="py-1">

@@ -47,6 +47,8 @@ services:
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-}
     ports:
       - "${UPSTREAMHUB_HTTP_PORT:-8080}:8418"
+    volumes:
+      - ./backups:/app/backups:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8418/healthz"]
       interval: 15s

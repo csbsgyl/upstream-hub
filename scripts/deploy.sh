@@ -14,8 +14,9 @@
 #   1. 检查 docker / docker compose 是否就绪
 #   2. 首次运行时自动生成 .env（随机 APP_SECRET / POSTGRES_PASSWORD，默认开启登录）
 #   3. git pull 拉取最新代码
-#   4. docker compose up -d --build 重新构建并启动
-#   5. 等待健康检查通过
+#   4. 已有数据库容器时先执行 scripts/backup.sh
+#   5. docker compose up -d --build 重新构建并启动
+#   6. 等待健康检查通过
 #
 # 默认账号：admin / admin —— 首次登录会强制要求修改密码。
 #
@@ -110,11 +111,24 @@ else
   c_warn "当前目录不是 git 仓库，跳过 git pull，用现有文件构建"
 fi
 
-# ---- 4. 构建并启动 ----
+# ---- 4. 已有部署则先做一次数据库备份 ----
+if [[ -f .env ]] && [[ -n "$(${COMPOSE} ps -q postgres 2>/dev/null || true)" ]]; then
+  c_info "检测到已有 Postgres 容器，部署前先备份数据库…"
+  if bash ./scripts/backup.sh >/dev/null; then
+    c_ok "部署前备份完成"
+  else
+    c_err "部署前备份失败，已停止部署，避免风险"
+    exit 1
+  fi
+else
+  c_info "未检测到已有数据库容器，跳过部署前备份"
+fi
+
+# ---- 5. 构建并启动 ----
 c_info "构建并启动容器（首次构建较慢，请耐心等待）…"
 ${COMPOSE} up -d --build
 
-# ---- 5. 健康检查 ----
+# ---- 6. 健康检查 ----
 # 从 .env 读对外端口，默认 8080
 HTTP_PORT="$(grep -E '^UPSTREAMHUB_HTTP_PORT=' .env 2>/dev/null | cut -d= -f2 || true)"
 HTTP_PORT="${HTTP_PORT:-8080}"

@@ -79,6 +79,7 @@ func changePassword(c *gin.Context, d *Deps) {
 		fail(c, http.StatusBadRequest, err)
 		return
 	}
+	audit(c, d, "auth.change_password", "admin_user", 0, "changed admin password", gin.H{"username": username})
 	c.JSON(http.StatusOK, gin.H{
 		"data": gin.H{
 			"token":                res.Token,

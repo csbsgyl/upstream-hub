@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/worryzyy/upstream-hub/internal/channel"
@@ -59,13 +60,29 @@ type channelUpdateInput struct {
 	MonitorEnabled   *bool                   `json:"monitor_enabled"`
 }
 
+type channelResponse struct {
+	storage.Channel
+	HealthScore  int    `json:"health_score"`
+	HealthStatus string `json:"health_status"`
+}
+
+func decorateChannel(ch storage.Channel, now time.Time) channelResponse {
+	h := computeChannelHealth(ch, now)
+	return channelResponse{Channel: ch, HealthScore: h.Score, HealthStatus: h.Status}
+}
+
 func listChannels(c *gin.Context, d *Deps) {
 	list, err := d.Channels.List()
 	if err != nil {
 		fail(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": list})
+	out := make([]channelResponse, 0, len(list))
+	now := time.Now()
+	for _, ch := range list {
+		out = append(out, decorateChannel(ch, now))
+	}
+	c.JSON(http.StatusOK, gin.H{"data": out})
 }
 
 func createChannel(c *gin.Context, d *Deps) {
@@ -100,7 +117,14 @@ func createChannel(c *gin.Context, d *Deps) {
 		fail(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": created})
+	audit(c, d, "channel.create", "channel", created.ID, "created channel "+created.Name, gin.H{
+		"name":              created.Name,
+		"type":              created.Type,
+		"credential_mode":   created.CredentialMode,
+		"monitor_enabled":   created.MonitorEnabled,
+		"turnstile_enabled": created.TurnstileEnabled,
+	})
+	c.JSON(http.StatusOK, gin.H{"data": decorateChannel(*created, time.Now())})
 }
 
 func getChannel(c *gin.Context, d *Deps) {
@@ -114,7 +138,7 @@ func getChannel(c *gin.Context, d *Deps) {
 		fail(c, http.StatusNotFound, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": ch})
+	c.JSON(http.StatusOK, gin.H{"data": decorateChannel(*ch, time.Now())})
 }
 
 func updateChannel(c *gin.Context, d *Deps) {
@@ -162,7 +186,14 @@ func updateChannel(c *gin.Context, d *Deps) {
 		fail(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": updated})
+	audit(c, d, "channel.update", "channel", updated.ID, "updated channel "+updated.Name, gin.H{
+		"name":              updated.Name,
+		"type":              updated.Type,
+		"credential_mode":   updated.CredentialMode,
+		"monitor_enabled":   updated.MonitorEnabled,
+		"turnstile_enabled": updated.TurnstileEnabled,
+	})
+	c.JSON(http.StatusOK, gin.H{"data": decorateChannel(*updated, time.Now())})
 }
 
 func deleteChannel(c *gin.Context, d *Deps) {
@@ -171,10 +202,16 @@ func deleteChannel(c *gin.Context, d *Deps) {
 		fail(c, http.StatusBadRequest, err)
 		return
 	}
+	ch, _ := d.Channels.FindByID(id)
 	if err := d.ChannelSvc.Delete(id); err != nil {
 		fail(c, http.StatusInternalServerError, err)
 		return
 	}
+	name := ""
+	if ch != nil {
+		name = ch.Name
+	}
+	audit(c, d, "channel.delete", "channel", id, "deleted channel "+name, gin.H{"name": name})
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -189,6 +226,11 @@ func toggleChannel(c *gin.Context, d *Deps, enabled bool) {
 		fail(c, http.StatusInternalServerError, err)
 		return
 	}
+	action := "channel.disable"
+	if enabled {
+		action = "channel.enable"
+	}
+	audit(c, d, action, "channel", id, "changed channel monitor status", gin.H{"monitor_enabled": enabled})
 	c.JSON(http.StatusOK, gin.H{"ok": true, "monitor_enabled": enabled})
 }
 
@@ -203,9 +245,11 @@ func testLogin(c *gin.Context, d *Deps) {
 	ctx := progress.WithObserver(c.Request.Context(), obs)
 
 	if err := d.ChannelSvc.TestLogin(ctx, id); err != nil {
+		audit(c, d, "channel.test_login", "channel", id, "tested channel login", gin.H{"ok": false, "error": err.Error()})
 		progress.Fail(ctx, progress.StageError, err.Error())
 		return
 	}
+	audit(c, d, "channel.test_login", "channel", id, "tested channel login", gin.H{"ok": true})
 	progress.OK(ctx, progress.StageDone, "登录测试成功")
 }
 
@@ -221,9 +265,11 @@ func refreshBalance(c *gin.Context, d *Deps) {
 		return
 	}
 	if err := d.Monitor.RefreshBalance(c.Request.Context(), ch); err != nil {
+		audit(c, d, "channel.refresh_balance", "channel", ch.ID, "refreshed channel balance "+ch.Name, gin.H{"ok": false, "error": err.Error()})
 		c.JSON(http.StatusOK, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
+	audit(c, d, "channel.refresh_balance", "channel", ch.ID, "refreshed channel balance "+ch.Name, gin.H{"ok": true})
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -239,9 +285,11 @@ func refreshRates(c *gin.Context, d *Deps) {
 		return
 	}
 	if err := d.Monitor.RefreshRates(c.Request.Context(), ch); err != nil {
+		audit(c, d, "channel.refresh_rates", "channel", ch.ID, "refreshed channel rates "+ch.Name, gin.H{"ok": false, "error": err.Error()})
 		c.JSON(http.StatusOK, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
+	audit(c, d, "channel.refresh_rates", "channel", ch.ID, "refreshed channel rates "+ch.Name, gin.H{"ok": true})
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -386,12 +434,16 @@ func syncChannel(c *gin.Context, d *Deps) {
 
 	switch {
 	case balErr != nil && rateErr != nil:
+		audit(c, d, "channel.sync", "channel", ch.ID, "synced channel "+ch.Name, gin.H{"ok": false, "balance_error": balErr.Error(), "rates_error": rateErr.Error()})
 		progress.Fail(ctx, progress.StageError, balErr.Error()+" | "+rateErr.Error())
 	case balErr != nil:
+		audit(c, d, "channel.sync", "channel", ch.ID, "synced channel "+ch.Name, gin.H{"ok": false, "balance_error": balErr.Error()})
 		progress.Fail(ctx, progress.StageError, balErr.Error())
 	case rateErr != nil:
+		audit(c, d, "channel.sync", "channel", ch.ID, "synced channel "+ch.Name, gin.H{"ok": false, "rates_error": rateErr.Error()})
 		progress.Fail(ctx, progress.StageError, rateErr.Error())
 	default:
+		audit(c, d, "channel.sync", "channel", ch.ID, "synced channel "+ch.Name, gin.H{"ok": true})
 		progress.OK(ctx, progress.StageDone, "同步完成")
 	}
 }

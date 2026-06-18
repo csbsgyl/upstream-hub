@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTheme } from "next-themes"
-import { Github, LogOut, RefreshCw, Sun, Moon } from "lucide-react"
+import { Github, LogOut, RefreshCw, Sun, Moon, Settings } from "lucide-react"
+import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -166,6 +167,25 @@ export function MonitorHeader() {
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
               {"GitHub · csbsgyl/upstream-hub"}
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip delayDuration={200}>
+            <TooltipTrigger asChild>
+              <Button
+                asChild
+                variant="outline"
+                size="icon"
+                className="size-8 border-border bg-background text-foreground hover:bg-muted"
+                aria-label="运维中心"
+              >
+                <Link to="/settings">
+                  <Settings className="size-3.5" />
+                </Link>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              {"运维中心"}
             </TooltipContent>
           </Tooltip>
 

@@ -105,10 +105,12 @@ type RetentionConfig struct {
 //   - SendMaxAttempts：单条通知发送失败时最多尝试次数（含首次）。
 //     1 = 不重试。重试采用指数退避：1s / 2s / 4s …，上限 30s。
 type NotificationsConfig struct {
-	BatchRateChanges          bool    `mapstructure:"batchRateChanges"`
-	MinChangePct              float64 `mapstructure:"minChangePct"`
-	BalanceLowCooldownMinutes int     `mapstructure:"balanceLowCooldownMinutes"`
-	SendMaxAttempts           int     `mapstructure:"sendMaxAttempts"`
+	BatchRateChanges          bool     `mapstructure:"batchRateChanges"`
+	MinChangePct              float64  `mapstructure:"minChangePct"`
+	RateChangeDirection       string   `mapstructure:"rateChangeDirection"`
+	RateChangeQuietGroups     []string `mapstructure:"rateChangeQuietGroups"`
+	BalanceLowCooldownMinutes int      `mapstructure:"balanceLowCooldownMinutes"`
+	SendMaxAttempts           int      `mapstructure:"sendMaxAttempts"`
 }
 
 type LogConfig struct {
@@ -157,6 +159,12 @@ func Load(path string) (*Config, error) {
 	_ = v.BindEnv("database.password", "UPSTREAMHUB_DATABASE_PASSWORD")
 	_ = v.BindEnv("database.name", "UPSTREAMHUB_DATABASE_NAME")
 	_ = v.BindEnv("database.sslMode", "UPSTREAMHUB_DATABASE_SSLMODE")
+	_ = v.BindEnv("notifications.batchRateChanges", "UPSTREAMHUB_NOTIFICATIONS_BATCH_RATE_CHANGES")
+	_ = v.BindEnv("notifications.minChangePct", "UPSTREAMHUB_NOTIFICATIONS_MIN_CHANGE_PCT")
+	_ = v.BindEnv("notifications.rateChangeDirection", "UPSTREAMHUB_NOTIFICATIONS_RATE_CHANGE_DIRECTION")
+	_ = v.BindEnv("notifications.rateChangeQuietGroups", "UPSTREAMHUB_NOTIFICATIONS_RATE_CHANGE_QUIET_GROUPS")
+	_ = v.BindEnv("notifications.balanceLowCooldownMinutes", "UPSTREAMHUB_NOTIFICATIONS_BALANCE_LOW_COOLDOWN_MINUTES")
+	_ = v.BindEnv("notifications.sendMaxAttempts", "UPSTREAMHUB_NOTIFICATIONS_SEND_MAX_ATTEMPTS")
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -168,7 +176,38 @@ func Load(path string) (*Config, error) {
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+	normalizeNotificationsConfig(&cfg.Notifications)
 	return cfg, nil
+}
+
+func normalizeNotificationsConfig(cfg *NotificationsConfig) {
+	switch strings.ToLower(strings.TrimSpace(cfg.RateChangeDirection)) {
+	case "", "all":
+		cfg.RateChangeDirection = "all"
+	case "increase", "up":
+		cfg.RateChangeDirection = "increase"
+	case "decrease", "down":
+		cfg.RateChangeDirection = "decrease"
+	default:
+		cfg.RateChangeDirection = "all"
+	}
+	groups := make([]string, 0, len(cfg.RateChangeQuietGroups))
+	seen := map[string]struct{}{}
+	for _, raw := range cfg.RateChangeQuietGroups {
+		for _, part := range strings.Split(raw, ",") {
+			group := strings.TrimSpace(part)
+			if group == "" {
+				continue
+			}
+			key := strings.ToLower(group)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			groups = append(groups, group)
+		}
+	}
+	cfg.RateChangeQuietGroups = groups
 }
 
 func setDefaults(v *viper.Viper) {
@@ -203,6 +242,8 @@ func setDefaults(v *viper.Viper) {
 	// 即"默认行为是合并刷屏 + 不重复 balance_low + 抗短时网络抖动"，不丢任何 rate_changed 事件。
 	v.SetDefault("notifications.batchRateChanges", true)
 	v.SetDefault("notifications.minChangePct", 0)
+	v.SetDefault("notifications.rateChangeDirection", "all")
+	v.SetDefault("notifications.rateChangeQuietGroups", []string{})
 	v.SetDefault("notifications.balanceLowCooldownMinutes", 60)
 	v.SetDefault("notifications.sendMaxAttempts", 3)
 

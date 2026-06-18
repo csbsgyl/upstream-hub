@@ -242,6 +242,21 @@ type MonitorLog struct {
 
 func (MonitorLog) TableName() string { return "monitor_logs" }
 
+// AuditLog 记录管理员在控制台触发的关键操作，用于部署后排查误操作和安全审计。
+// Metadata 保存脱敏 JSON，不写入密码、token、cookie、通知 webhook 等敏感配置。
+type AuditLog struct {
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	Actor        string    `gorm:"size:128;not null;index" json:"actor"`
+	Action       string    `gorm:"size:96;not null;index" json:"action"`
+	ResourceType string    `gorm:"size:64;not null;index" json:"resource_type"`
+	ResourceID   uint      `gorm:"index" json:"resource_id"`
+	Summary      string    `gorm:"size:512;not null" json:"summary"`
+	Metadata     string    `gorm:"type:text" json:"metadata,omitempty"`
+	CreatedAt    time.Time `gorm:"not null;index" json:"created_at"`
+}
+
+func (AuditLog) TableName() string { return "audit_logs" }
+
 // AdminUser 后台管理员账号。凭据持久化在数据库（区别于早期写死在 config 的方式），
 // 密码以 bcrypt 哈希保存，支持"首次登录强制修改密码"。
 //
@@ -258,4 +273,3 @@ type AdminUser struct {
 }
 
 func (AdminUser) TableName() string { return "admin_users" }
-

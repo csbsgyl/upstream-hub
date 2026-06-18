@@ -29,10 +29,16 @@ func registerNotifications(g *gin.RouterGroup, d *Deps) {
 			fail(c, http.StatusBadRequest, err)
 			return
 		}
+		ch, _ := d.Notifies.FindChannel(id)
 		if err := d.Notifies.DeleteChannel(id); err != nil {
 			fail(c, http.StatusInternalServerError, err)
 			return
 		}
+		name := ""
+		if ch != nil {
+			name = ch.Name
+		}
+		audit(c, d, "notification_channel.delete", "notification_channel", id, "deleted notification channel "+name, gin.H{"name": name})
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 	gpc.POST("/:id/test", func(c *gin.Context) { testNotify(c, d) })
@@ -46,6 +52,16 @@ func registerNotifications(g *gin.RouterGroup, d *Deps) {
 		}
 		c.JSON(http.StatusOK, gin.H{"data": list})
 	})
+	g.GET("/notifications/failed", func(c *gin.Context) {
+		limit := queryIntClamped(c, "limit", 100, 1, 500)
+		list, err := d.Notifies.ListFailedLogs(limit)
+		if err != nil {
+			fail(c, http.StatusInternalServerError, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": list})
+	})
+	g.POST("/notifications/logs/:id/retry", func(c *gin.Context) { retryNotificationLog(c, d) })
 }
 
 type notifyChannelInput struct {
@@ -156,6 +172,11 @@ func createNotifyChannel(c *gin.Context, d *Deps) {
 		fail(c, http.StatusInternalServerError, err)
 		return
 	}
+	audit(c, d, "notification_channel.create", "notification_channel", ch.ID, "created notification channel "+ch.Name, gin.H{
+		"name":    ch.Name,
+		"type":    ch.Type,
+		"enabled": ch.Enabled,
+	})
 	c.JSON(http.StatusOK, gin.H{"data": ch})
 }
 
@@ -209,6 +230,11 @@ func updateNotifyChannel(c *gin.Context, d *Deps) {
 		fail(c, http.StatusInternalServerError, err)
 		return
 	}
+	audit(c, d, "notification_channel.update", "notification_channel", ch.ID, "updated notification channel "+ch.Name, gin.H{
+		"name":    ch.Name,
+		"type":    ch.Type,
+		"enabled": ch.Enabled,
+	})
 	c.JSON(http.StatusOK, gin.H{"data": ch})
 }
 
@@ -234,8 +260,52 @@ func testNotify(c *gin.Context, d *Deps) {
 		Body:    "这是一条来自 " + displayName + " 的测试消息。",
 	}
 	if err := d.Dispatcher.Send(c.Request.Context(), ch, msg); err != nil {
+		audit(c, d, "notification_channel.test", "notification_channel", ch.ID, "tested notification channel "+ch.Name, gin.H{
+			"ok":    false,
+			"error": err.Error(),
+		})
 		c.JSON(http.StatusOK, gin.H{"ok": false, "error": err.Error()})
 		return
 	}
+	audit(c, d, "notification_channel.test", "notification_channel", ch.ID, "tested notification channel "+ch.Name, gin.H{"ok": true})
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func retryNotificationLog(c *gin.Context, d *Deps) {
+	id, err := uintParam(c, "id")
+	if err != nil {
+		fail(c, http.StatusBadRequest, err)
+		return
+	}
+	logRow, err := d.Notifies.FindLog(id)
+	if err != nil {
+		fail(c, http.StatusNotFound, err)
+		return
+	}
+	ch, err := d.Notifies.FindChannel(logRow.ChannelID)
+	if err != nil {
+		fail(c, http.StatusNotFound, err)
+		return
+	}
+	msg := notify.Message{
+		Event:   logRow.Event,
+		Subject: logRow.Subject,
+		Body:    logRow.Body,
+	}
+	if err := d.Dispatcher.Resend(c.Request.Context(), ch, msg); err != nil {
+		audit(c, d, "notification_log.retry", "notification_log", logRow.ID, "retried failed notification "+logRow.Subject, gin.H{
+			"ok":                      false,
+			"notification_channel_id": ch.ID,
+			"event":                   logRow.Event,
+			"error":                   err.Error(),
+		})
+		c.JSON(http.StatusOK, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	audit(c, d, "notification_log.retry", "notification_log", logRow.ID, "retried notification "+logRow.Subject, gin.H{
+		"ok":                      true,
+		"notification_channel_id": ch.ID,
+		"event":                   logRow.Event,
+	})
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

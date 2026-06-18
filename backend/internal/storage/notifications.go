@@ -26,6 +26,18 @@ func (r *Notifications) ListEnabledChannels() ([]NotificationChannel, error) {
 	return list, nil
 }
 
+func (r *Notifications) CountChannels() (int64, error) {
+	var n int64
+	err := r.db.Model(&NotificationChannel{}).Count(&n).Error
+	return n, err
+}
+
+func (r *Notifications) CountEnabledChannels() (int64, error) {
+	var n int64
+	err := r.db.Model(&NotificationChannel{}).Where("enabled = ?", true).Count(&n).Error
+	return n, err
+}
+
 func (r *Notifications) FindChannel(id uint) (*NotificationChannel, error) {
 	var c NotificationChannel
 	if err := r.db.First(&c, id).Error; err != nil {
@@ -36,7 +48,23 @@ func (r *Notifications) FindChannel(id uint) (*NotificationChannel, error) {
 
 func (r *Notifications) CreateChannel(c *NotificationChannel) error { return r.db.Create(c).Error }
 func (r *Notifications) UpdateChannel(c *NotificationChannel) error { return r.db.Save(c).Error }
-func (r *Notifications) DeleteChannel(id uint) error                { return r.db.Delete(&NotificationChannel{}, id).Error }
+func (r *Notifications) DeleteChannel(id uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var ch NotificationChannel
+		if err := tx.First(&ch, id).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&ch).Updates(map[string]any{
+			"name":          deletedName(ch.Name, ch.ID),
+			"config_cipher": "",
+			"subscriptions": "[]",
+			"enabled":       false,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&ch).Error
+	})
+}
 
 func (r *Notifications) AppendLog(l *NotificationLog) error {
 	if l.SentAt.IsZero() {
@@ -54,6 +82,31 @@ func (r *Notifications) ListLogs(limit int) ([]NotificationLog, error) {
 		return nil, err
 	}
 	return list, nil
+}
+
+func (r *Notifications) FindLog(id uint) (*NotificationLog, error) {
+	var l NotificationLog
+	if err := r.db.First(&l, id).Error; err != nil {
+		return nil, err
+	}
+	return &l, nil
+}
+
+func (r *Notifications) ListFailedLogs(limit int) ([]NotificationLog, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	var list []NotificationLog
+	if err := r.db.Where("success = ?", false).Order("sent_at DESC").Limit(limit).Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (r *Notifications) CountFailedLogs() (int64, error) {
+	var n int64
+	err := r.db.Model(&NotificationLog{}).Where("success = ?", false).Count(&n).Error
+	return n, err
 }
 
 // DeleteLogsBefore 删除 sent_at < cutoff 的通知日志，返回删除行数。

@@ -70,6 +70,18 @@ func (r *Rates) ListChanges(channelID uint, limit int) ([]RateChangeLog, error) 
 	return list, nil
 }
 
+func (r *Rates) CountChanges() (int64, error) {
+	var n int64
+	err := r.db.Model(&RateChangeLog{}).Count(&n).Error
+	return n, err
+}
+
+func (r *Rates) CountSnapshots() (int64, error) {
+	var n int64
+	err := r.db.Model(&RateSnapshot{}).Count(&n).Error
+	return n, err
+}
+
 func (r *Rates) AppendBalance(s *BalanceSnapshot) error {
 	if s.SampledAt.IsZero() {
 		s.SampledAt = time.Now()

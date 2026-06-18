@@ -65,6 +65,11 @@ func (d *Dispatcher) Send(ctx context.Context, ch *storage.NotificationChannel, 
 	return err
 }
 
+// Resend 重新发送一条已经落库的消息，保留历史 subject/body，不再重新套用品牌替换。
+func (d *Dispatcher) Resend(ctx context.Context, ch *storage.NotificationChannel, msg Message) error {
+	return d.sendOne(ctx, ch, msg, false)
+}
+
 // Dispatch 按事件类型广播到所有启用的通知渠道，返回累计错误（部分失败也会写日志）。
 //
 // 订阅过滤：渠道配置 Subscriptions 非空时，必须有任意一条订阅命中 msg 才发送；
@@ -95,14 +100,14 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg Message) error {
 //   - 然后对每个通知渠道：先用它自己的 Subscriptions 切片出它关心的 changes，
 //     再按 BatchRateChanges 决定合并发送 1 条还是逐条发送
 //
-// 关键：合并消息只包含订阅匹配的子集，避免"全合并后 ModelName='' 被 groups 模式订阅过滤掉"的边界。
+// 关键：合并消息只包含订阅匹配的子集，避免"全合并后 ModelName=” 被 groups 模式订阅过滤掉"的边界。
 func (d *Dispatcher) DispatchRateBatch(ctx context.Context, channel *storage.Channel, changes []RateChange) error {
 	if channel == nil || len(changes) == 0 {
 		return nil
 	}
 	filtered := make([]RateChange, 0, len(changes))
 	for _, c := range changes {
-		if c.ChangePctAbove(d.policy.MinChangePct) {
+		if c.AllowedByPolicy(d.policy) {
 			filtered = append(filtered, c)
 		}
 	}
@@ -140,14 +145,14 @@ func (d *Dispatcher) DispatchRateBatch(ctx context.Context, channel *storage.Cha
 
 		if d.policy.BatchRateChanges {
 			merged := BuildBatchMessage(channel, matching)
-			if err := d.sendOne(ctx, &nch, merged); err != nil {
+			if err := d.sendOne(ctx, &nch, merged, true); err != nil {
 				errs = append(errs, err)
 			}
 		} else {
 			// 用户显式关掉合并：仍按订阅切片，但逐条发。
 			for _, c := range matching {
 				single := BuildBatchMessage(channel, []RateChange{c})
-				if err := d.sendOne(ctx, &nch, single); err != nil {
+				if err := d.sendOne(ctx, &nch, single, true); err != nil {
 					errs = append(errs, err)
 				}
 			}
@@ -250,7 +255,7 @@ func (d *Dispatcher) fanout(ctx context.Context, msg Message, extraFilter func(*
 			continue
 		}
 		result.attempted++
-		if err := d.sendOne(ctx, &ch, msg); err != nil {
+		if err := d.sendOne(ctx, &ch, msg, true); err != nil {
 			errs = append(errs, err)
 		} else {
 			result.succeeded++
@@ -261,8 +266,10 @@ func (d *Dispatcher) fanout(ctx context.Context, msg Message, extraFilter func(*
 }
 
 // sendOne 给单个通知渠道发送一条消息，包含"解密配置 → 构造 Notifier → 重试发送 → 写日志"。
-func (d *Dispatcher) sendOne(ctx context.Context, ch *storage.NotificationChannel, msg Message) error {
-	msg = brandMessage(ch, msg)
+func (d *Dispatcher) sendOne(ctx context.Context, ch *storage.NotificationChannel, msg Message, applyBrand bool) error {
+	if applyBrand {
+		msg = brandMessage(ch, msg)
+	}
 	cfgJSON, err := d.cipher.Decrypt(ch.ConfigCipher)
 	if err != nil {
 		d.logResult(ch.ID, msg, err)

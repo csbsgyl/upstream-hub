@@ -5,9 +5,11 @@ import { apiFetch } from "@/lib/api"
 import { useRefreshTick } from "@/lib/refresh-context"
 import type {
   BalanceTrendPoint,
+  AuditLog,
   CaptchaConfig,
   Channel,
   DashboardSummary,
+  OpsStatus,
   NotificationChannel,
   NotificationLog,
   RateChangeLog,
@@ -151,4 +153,16 @@ export function useNotificationLogs(limit = 20) {
 
 export function useCaptchaConfigs() {
   return useApi<CaptchaConfig[]>("/captcha-configs")
+}
+
+export function useOpsStatus() {
+  return useApi<OpsStatus>("/ops/status")
+}
+
+export function useAuditLogs(limit = 100) {
+  return useApi<AuditLog[]>(`/ops/audit-logs?limit=${limit}`)
+}
+
+export function useFailedNotificationLogs(limit = 100) {
+  return useApi<NotificationLog[]>(`/notifications/failed?limit=${limit}`)
 }

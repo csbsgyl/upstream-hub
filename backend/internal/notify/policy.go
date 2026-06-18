@@ -12,13 +12,17 @@ import (
 // Policy 通知去抖策略。所有字段都是面向"少烦用户"取向：
 //   - BatchRateChanges：同次扫描中合并多条 rate_changed 成一条消息
 //   - MinChangePct：涨跌幅小于阈值时跳过推送（仍写入 RateChangeLog 表）
+//   - RateChangeDirection：rate_changed 方向过滤，all / increase / decrease
+//   - QuietGroups：不推送指定分组名的 rate_changed（仍写入 RateChangeLog 表）
 //   - BalanceLowCooldown：同渠道 balance_low 在窗口内不重复发送
 //   - SendMaxAttempts：单条消息最多发送尝试次数（含首发），<=1 表示不重试
 type Policy struct {
-	BatchRateChanges   bool
-	MinChangePct       float64
-	BalanceLowCooldown time.Duration
-	SendMaxAttempts    int
+	BatchRateChanges    bool
+	MinChangePct        float64
+	RateChangeDirection string
+	QuietGroups         []string
+	BalanceLowCooldown  time.Duration
+	SendMaxAttempts     int
 }
 
 // CooldownStore Dispatcher 用来判断某个 (channelID, event) 是否还在冷却窗口。
@@ -52,6 +56,38 @@ func (rc RateChange) ChangePctAbove(minPct float64) bool {
 	}
 	pct := math.Abs(rc.NewRatio-rc.OldRatio) / math.Abs(rc.OldRatio) * 100
 	return pct >= minPct
+}
+
+func (rc RateChange) AllowedByPolicy(p Policy) bool {
+	if !rc.ChangePctAbove(p.MinChangePct) {
+		return false
+	}
+	if rc.quietedBy(p.QuietGroups) {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(p.RateChangeDirection)) {
+	case "", "all":
+		return true
+	case "increase", "up":
+		return rc.NewRatio > rc.OldRatio
+	case "decrease", "down":
+		return rc.NewRatio < rc.OldRatio
+	default:
+		return true
+	}
+}
+
+func (rc RateChange) quietedBy(groups []string) bool {
+	name := strings.TrimSpace(strings.ToLower(rc.GroupName))
+	if name == "" || len(groups) == 0 {
+		return false
+	}
+	for _, g := range groups {
+		if strings.TrimSpace(strings.ToLower(g)) == name {
+			return true
+		}
+	}
+	return false
 }
 
 // BuildBatchMessage 把多条 RateChange 合并成一条 notify.Message。

@@ -39,6 +39,12 @@ func (r *MonitorLogs) List(channelID uint, limit int) ([]MonitorLog, error) {
 	return list, nil
 }
 
+func (r *MonitorLogs) CountFailures() (int64, error) {
+	var n int64
+	err := r.db.Model(&MonitorLog{}).Where("success = ?", false).Count(&n).Error
+	return n, err
+}
+
 // DeleteBefore 删除 started_at < cutoff 的日志，返回删除行数。
 func (r *MonitorLogs) DeleteBefore(cutoff time.Time) (int64, error) {
 	res := r.db.Where("started_at < ?", cutoff).Delete(&MonitorLog{})

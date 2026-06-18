@@ -71,3 +71,34 @@ func TestSubsetForSubscriptionsFiltersRateGroups(t *testing.T) {
 		t.Fatalf("filtered changes = %#v, want only claude", got)
 	}
 }
+
+func TestRateChangeAllowedByPolicyDirectionAndQuietGroups(t *testing.T) {
+	up := RateChange{GroupName: "gpt pro", OldRatio: 1, NewRatio: 1.5}
+	down := RateChange{GroupName: "claude", OldRatio: 2, NewRatio: 1.5}
+
+	if !up.AllowedByPolicy(Policy{RateChangeDirection: "increase"}) {
+		t.Fatal("increase policy should allow upward change")
+	}
+	if down.AllowedByPolicy(Policy{RateChangeDirection: "increase"}) {
+		t.Fatal("increase policy should reject downward change")
+	}
+	if up.AllowedByPolicy(Policy{RateChangeDirection: "decrease"}) {
+		t.Fatal("decrease policy should reject upward change")
+	}
+	if !down.AllowedByPolicy(Policy{RateChangeDirection: "decrease"}) {
+		t.Fatal("decrease policy should allow downward change")
+	}
+	if up.AllowedByPolicy(Policy{QuietGroups: []string{" GPT PRO "}}) {
+		t.Fatal("quiet group should reject matching group case-insensitively")
+	}
+}
+
+func TestRateChangeAllowedByPolicyMinPct(t *testing.T) {
+	small := RateChange{GroupName: "gpt pro", OldRatio: 1, NewRatio: 1.01}
+	if small.AllowedByPolicy(Policy{MinChangePct: 5}) {
+		t.Fatal("min pct policy should reject small changes")
+	}
+	if !small.AllowedByPolicy(Policy{MinChangePct: 0}) {
+		t.Fatal("zero min pct should allow changes")
+	}
+}

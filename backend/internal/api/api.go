@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/worryzyy/upstream-hub/internal/auth"
 	"github.com/worryzyy/upstream-hub/internal/channel"
+	"github.com/worryzyy/upstream-hub/internal/config"
 	"github.com/worryzyy/upstream-hub/internal/crypto"
 	"github.com/worryzyy/upstream-hub/internal/monitor"
 	"github.com/worryzyy/upstream-hub/internal/notify"
@@ -31,9 +32,11 @@ type Deps struct {
 	Notifies   *storage.Notifications
 	Rates      *storage.Rates
 	MonLogs    *storage.MonitorLogs
+	AuditLogs  *storage.AuditLogs
 	ChannelSvc *channel.Service
 	Monitor    *monitor.Service
 	Dispatcher *notify.Dispatcher
+	Config     *config.Config
 	Log        *slog.Logger
 
 	// Frontend 可选：传入嵌入的前端 dist 文件系统。nil 表示不挂载（本地开发用 vite dev server）。
@@ -71,6 +74,7 @@ func Register(r *gin.Engine, d *Deps) {
 		registerRates(api, d)
 		registerMonitorLogs(api, d)
 		registerDashboard(api, d)
+		registerOps(api, d)
 	}
 
 	if d.Frontend != nil {

@@ -39,10 +39,16 @@ func registerCaptchas(g *gin.RouterGroup, d *Deps) {
 			fail(c, http.StatusConflict, errors.New("captcha config is still used by channels"))
 			return
 		}
+		cfg, _ := d.Captchas.FindByID(id)
 		if err := d.Captchas.Delete(id); err != nil {
 			fail(c, http.StatusInternalServerError, err)
 			return
 		}
+		name := ""
+		if cfg != nil {
+			name = cfg.Name
+		}
+		audit(c, d, "captcha_config.delete", "captcha_config", id, "deleted captcha config "+name, gin.H{"name": name})
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 }
@@ -107,6 +113,11 @@ func createCaptcha(c *gin.Context, d *Deps) {
 		fail(c, http.StatusInternalServerError, err)
 		return
 	}
+	audit(c, d, "captcha_config.create", "captcha_config", cfg.ID, "created captcha config "+cfg.Name, gin.H{
+		"name":    cfg.Name,
+		"type":    cfg.Type,
+		"enabled": cfg.Enabled,
+	})
 	c.JSON(http.StatusOK, gin.H{"data": cfg})
 }
 
@@ -187,6 +198,11 @@ func updateCaptcha(c *gin.Context, d *Deps) {
 		fail(c, http.StatusInternalServerError, err)
 		return
 	}
+	audit(c, d, "captcha_config.update", "captcha_config", cfg.ID, "updated captcha config "+cfg.Name, gin.H{
+		"name":    cfg.Name,
+		"type":    cfg.Type,
+		"enabled": cfg.Enabled,
+	})
 	c.JSON(http.StatusOK, gin.H{"data": cfg})
 }
 

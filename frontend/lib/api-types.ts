@@ -45,6 +45,8 @@ export interface Channel {
   last_balance?: number | null
   last_balance_at?: string | null
   last_error?: string
+  health_score?: number
+  health_status?: string
   created_at: string
   updated_at: string
 }
@@ -156,4 +158,38 @@ export interface DashboardSummary {
 export interface BalanceTrendPoint {
   day: string
   balance: number
+}
+
+export interface AuditLog {
+  id: number
+  actor: string
+  action: string
+  resource_type: string
+  resource_id: number
+  summary: string
+  metadata?: string
+  created_at: string
+}
+
+export interface BackupState {
+  path: string
+  name: string
+  size: number
+  updated_at: string
+}
+
+export interface OpsStatus {
+  database: string
+  auth_enabled: boolean
+  app_secret_ready: boolean
+  scheduler: Record<string, unknown>
+  notifications: Record<string, unknown>
+  channels: Record<string, unknown>
+  captchas: Record<string, unknown>
+  backups: BackupState[]
+  recent_audit_logs: Record<string, unknown>[]
+  recent_monitor_logs: Record<string, unknown>[]
+  recent_rate_changes: Record<string, unknown>[]
+  recent_notification_logs: Record<string, unknown>[]
+  generated_at: string
 }

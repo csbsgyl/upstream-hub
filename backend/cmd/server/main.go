@@ -66,6 +66,7 @@ func main() {
 	rates := storage.NewRates(db)
 	monLogs := storage.NewMonitorLogs(db)
 	adminUsers := storage.NewAdminUsers(db)
+	auditLogs := storage.NewAuditLogs(db)
 
 	// Auth：默认开启（AUTH_ENABLED=true）。凭据持久化在 admin_users 表，
 	// 表为空时 seed 默认账号：未显式设 ADMIN_PASSWORD 时为 admin/admin 且首登强制改密。
@@ -96,10 +97,12 @@ func main() {
 
 	channelSvc := channel.NewService(channels, authSessions, captchas, monLogs, cipher)
 	dispatcher := notify.NewDispatcher(notifies, cipher, log, notify.Policy{
-		BatchRateChanges:   cfg.Notifications.BatchRateChanges,
-		MinChangePct:       cfg.Notifications.MinChangePct,
-		BalanceLowCooldown: time.Duration(cfg.Notifications.BalanceLowCooldownMinutes) * time.Minute,
-		SendMaxAttempts:    cfg.Notifications.SendMaxAttempts,
+		BatchRateChanges:    cfg.Notifications.BatchRateChanges,
+		MinChangePct:        cfg.Notifications.MinChangePct,
+		RateChangeDirection: cfg.Notifications.RateChangeDirection,
+		QuietGroups:         cfg.Notifications.RateChangeQuietGroups,
+		BalanceLowCooldown:  time.Duration(cfg.Notifications.BalanceLowCooldownMinutes) * time.Minute,
+		SendMaxAttempts:     cfg.Notifications.SendMaxAttempts,
 	})
 	monitorSvc := monitor.NewService(channels, rates, monLogs, channelSvc, dispatcher, log)
 
@@ -137,9 +140,11 @@ func main() {
 		Notifies:   notifies,
 		Rates:      rates,
 		MonLogs:    monLogs,
+		AuditLogs:  auditLogs,
 		ChannelSvc: channelSvc,
 		Monitor:    monitorSvc,
 		Dispatcher: dispatcher,
+		Config:     cfg,
 		Log:        log,
 		Frontend:   frontendFS,
 	})
