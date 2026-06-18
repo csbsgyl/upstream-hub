@@ -357,15 +357,10 @@ func (d *Dispatcher) sendOne(ctx context.Context, ch *storage.NotificationChanne
 	return nil
 }
 
-// sendWithRetry 指数退避重试发送。
+// sendWithRetry 发送通知。
 //
-// 重试策略：
-//   - 最多 SendMaxAttempts 次（含首发）
-//   - 退避 = 2^(attempt-1) * 1s，上限 30s（即 1s / 2s / 4s / 8s / 16s / 30s ...）
-//   - ctx 被取消时立即返回，不再等待
-//
-// 注意：所有错误都会重试，包括 "Telegram 401 unauthorized" 这类永久错误。
-// 单用户场景下，简单胜过复杂；如果反复重试相同 401，反正最多 SendMaxAttempts 次就停了。
+// 默认不重试，避免服务端已经收到但客户端超时导致的重复通知。
+// 需要重试时可把 SendMaxAttempts 设为 >1。
 func (d *Dispatcher) sendWithRetry(ctx context.Context, channelName string, n Notifier, msg Message) error {
 	maxAttempts := d.policy.SendMaxAttempts
 	if maxAttempts <= 0 {

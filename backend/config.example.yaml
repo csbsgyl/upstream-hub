@@ -57,9 +57,9 @@ notifications:
   balanceLowCooldownMinutes: 60
   # 同一上游的登录/采集失败在 N 分钟内只发一次，避免余额和倍率同时失败时连发两条。
   failureCooldownMinutes: 10
-  # 单条通知发送失败时最多重试次数（含首次）。1 = 不重试。
-  # 退避：1s / 2s / 4s … 上限 30s。
-  sendMaxAttempts: 3
+  # 单条通知最多发送尝试次数（含首次）。默认 1 = 不自动重试，避免通知接口已收到
+  # 但客户端超时后重试造成重复通知。需要网络容错时可调高。
+  sendMaxAttempts: 1
 
 log:
   level: info          # debug | info | warn | error

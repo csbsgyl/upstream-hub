@@ -50,8 +50,9 @@ func (s Subscription) Matches(msg Message) bool {
 	if msg.Event != storage.EventRateChanged || s.Mode != SubscriptionModeGroups {
 		return true
 	}
+	modelName := strings.TrimSpace(msg.ModelName)
 	for _, g := range s.Groups {
-		if g == msg.ModelName {
+		if strings.EqualFold(strings.TrimSpace(g), modelName) {
 			return true
 		}
 	}

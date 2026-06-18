@@ -104,8 +104,9 @@ type RetentionConfig struct {
 //     notification_cooldowns 表，跨重启生效。
 //   - FailureCooldownMinutes：同一渠道的登录/采集失败在 X 分钟内不重复推送。
 //     主要避免一次同步里余额和倍率都登录失败时连续刷两条相同通知。
-//   - SendMaxAttempts：单条通知发送失败时最多尝试次数（含首次）。
-//     1 = 不重试。重试采用指数退避：1s / 2s / 4s …，上限 30s。
+//   - SendMaxAttempts：单条通知最多发送尝试次数（含首次）。
+//     默认 1 = 不自动重试，避免服务端已收到但客户端超时造成重复通知。
+//     如需提高网络容错可设为 >1，重试采用指数退避：1s / 2s / 4s …，上限 30s。
 type NotificationsConfig struct {
 	BatchRateChanges          bool     `mapstructure:"batchRateChanges"`
 	MinChangePct              float64  `mapstructure:"minChangePct"`
@@ -242,15 +243,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.username", "admin")
 	v.SetDefault("auth.sessionTTLHours", 168) // 7 天
 
-	// 通知去抖：默认开合并、不过滤涨跌幅、balance_low 1h 内不重复、失败重试 3 次。
-	// 即"默认行为是合并刷屏 + 不重复 balance_low + 抗短时网络抖动"，不丢任何 rate_changed 事件。
+	// 通知去抖：默认开合并、不过滤涨跌幅、balance_low 1h 内不重复、通知不自动重试。
+	// 即"默认行为是合并刷屏 + 不重复 balance_low + 降低重复推送风险"，不丢任何 rate_changed 事件。
 	v.SetDefault("notifications.batchRateChanges", true)
 	v.SetDefault("notifications.minChangePct", 0)
 	v.SetDefault("notifications.rateChangeDirection", "all")
 	v.SetDefault("notifications.rateChangeQuietGroups", []string{})
 	v.SetDefault("notifications.balanceLowCooldownMinutes", 60)
 	v.SetDefault("notifications.failureCooldownMinutes", 10)
-	v.SetDefault("notifications.sendMaxAttempts", 3)
+	v.SetDefault("notifications.sendMaxAttempts", 1)
 
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.format", "text")

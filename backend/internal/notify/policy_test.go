@@ -74,6 +74,22 @@ func TestSubsetForSubscriptionsFiltersRateGroups(t *testing.T) {
 	}
 }
 
+func TestSubsetForSubscriptionsMatchesRateGroupsLoosely(t *testing.T) {
+	changes := []RateChange{
+		{GroupName: "Claude", OldRatio: 2.1, NewRatio: 1.8},
+	}
+	subs := []Subscription{{
+		ChannelID: 42,
+		Mode:      SubscriptionModeGroups,
+		Groups:    []string{" claude "},
+	}}
+
+	got := subsetForSubscriptions(42, changes, subs)
+	if len(got) != 1 || got[0].GroupName != "Claude" {
+		t.Fatalf("filtered changes = %#v, want loose match for Claude", got)
+	}
+}
+
 func TestRateChangeAllowedByPolicyDirectionAndQuietGroups(t *testing.T) {
 	up := RateChange{GroupName: "gpt pro", OldRatio: 1, NewRatio: 1.5}
 	down := RateChange{GroupName: "claude", OldRatio: 2, NewRatio: 1.5}
