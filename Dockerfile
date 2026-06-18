@@ -30,6 +30,12 @@ RUN pnpm build
 FROM golang:1.23-alpine AS go-builder
 WORKDIR /src
 
+ARG UPSTREAMHUB_VERSION=0.1.0-dev
+ARG UPSTREAMHUB_COMMIT=unknown
+ARG UPSTREAMHUB_BRANCH=main
+ARG UPSTREAMHUB_BUILD_TIME=
+ARG UPSTREAMHUB_REPOSITORY=csbsgyl/upstream-hub
+
 # 先 go.mod / go.sum 走缓存
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
@@ -43,7 +49,12 @@ COPY --from=frontend-builder /web/dist ./web/dist
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
         -trimpath \
-        -ldflags="-s -w" \
+        -ldflags="-s -w \
+          -X 'github.com/worryzyy/upstream-hub/internal/version.Version=${UPSTREAMHUB_VERSION}' \
+          -X 'github.com/worryzyy/upstream-hub/internal/version.Commit=${UPSTREAMHUB_COMMIT}' \
+          -X 'github.com/worryzyy/upstream-hub/internal/version.Branch=${UPSTREAMHUB_BRANCH}' \
+          -X 'github.com/worryzyy/upstream-hub/internal/version.BuildTime=${UPSTREAMHUB_BUILD_TIME}' \
+          -X 'github.com/worryzyy/upstream-hub/internal/version.Repository=${UPSTREAMHUB_REPOSITORY}'" \
         -o /out/upstream-hub \
         ./cmd/server
 

@@ -15,6 +15,7 @@ import type {
   NotificationLog,
   RateChangeLog,
   RateSnapshot,
+  VersionCheck,
 } from "@/lib/api-types"
 
 export interface QueryState<T> {
@@ -158,6 +159,10 @@ export function useCaptchaConfigs() {
 
 export function useOpsStatus() {
   return useApi<OpsStatus>("/ops/status")
+}
+
+export function useVersionCheck() {
+  return useApi<VersionCheck>("/version/check")
 }
 
 export function useAuditLogs(limit = 100) {

@@ -10,6 +10,7 @@ import { AddChannelProvider } from '@/lib/add-channel-context'
 import { AuthGate } from '@/components/auth/auth-gate'
 import { AppShell } from '@/components/app-shell'
 import { Toaster } from '@/components/ui/sonner'
+import { VersionToast } from '@/components/update/version-toast'
 import DashboardPage from '@/app/page'
 import CaptchaPage from '@/app/captcha-page'
 import NotificationsPage from '@/app/notifications-page'
@@ -24,6 +25,7 @@ createRoot(document.getElementById('root')!).render(
           <RefreshProvider>
             <BrowserRouter>
               <AddChannelProvider>
+                <VersionToast />
                 <Routes>
                   <Route element={<AppShell />}>
                     <Route index element={<DashboardPage />} />

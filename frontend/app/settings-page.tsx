@@ -8,6 +8,7 @@ import {
   BellRing,
   CheckCircle2,
   ClipboardCopy,
+  ArrowUpRight,
   DatabaseBackup,
   Download,
   FileJson,
@@ -18,6 +19,7 @@ import {
   RotateCcw,
   Sparkles,
   Trash2,
+  RefreshCw,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -25,7 +27,7 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { apiFetch, getToken } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
-import { useAuditLogs, useFailedNotificationLogs, useOpsStatus } from "@/lib/queries"
+import { useAuditLogs, useFailedNotificationLogs, useOpsStatus, useVersionCheck } from "@/lib/queries"
 import { useTriggerRefresh } from "@/lib/refresh-context"
 import { relativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -40,6 +42,7 @@ type BusyAction =
   | "scan-sync"
   | "scan-balances"
   | "scan-rates"
+  | "copy-update"
   | `download-${string}`
 
 function asText(v: unknown, fallback = "-") {
@@ -181,6 +184,7 @@ function ActionButton({
 export default function SettingsPage() {
   const { username } = useAuth()
   const status = useOpsStatus()
+  const version = useVersionCheck()
   const audits = useAuditLogs(80)
   const failedNotifications = useFailedNotificationLogs(50)
   const refresh = useTriggerRefresh()
@@ -202,6 +206,16 @@ export default function SettingsPage() {
   const backupCount = s?.backups?.length ?? 0
   const systemLoading = status.loading && !s
   const systemReady = Boolean(s && s.database === "ok" && s.app_secret_ready)
+  const versionInfo = version.data
+  const versionError = version.error || versionInfo?.check_error || ""
+  const versionTitle = version.loading
+    ? "正在检查版本"
+    : versionError
+      ? "版本检查失败"
+      : versionInfo?.has_update
+        ? "检测到新版本"
+        : "当前已是最新"
+  const versionBadge = version.loading ? "检查中" : versionError ? "检查失败" : versionInfo?.has_update ? "可更新" : "无需更新"
 
   const diagnosticsSummary = useMemo(() => {
     if (!s) return ""
@@ -222,6 +236,7 @@ export default function SettingsPage() {
 
   function reloadOps() {
     status.refetch()
+    version.refetch()
     audits.refetch()
     failedNotifications.refetch()
     refresh()
@@ -311,6 +326,14 @@ export default function SettingsPage() {
     }).catch((e: Error) => toast.error(e.message || "复制失败"))
   }
 
+  async function copyUpdateCommand() {
+    await runAction("copy-update", async () => {
+      const command = versionInfo?.update_command ?? "git pull && ./scripts/deploy.sh"
+      await navigator.clipboard.writeText(command)
+      toast.success("更新命令已复制")
+    }).catch((e: Error) => toast.error(e.message || "复制失败"))
+  }
+
   async function scan(job: "sync" | "balances" | "rates") {
     const key = job === "sync" ? "scan-sync" : job === "balances" ? "scan-balances" : "scan-rates"
     await runAction(key, async () => {
@@ -359,6 +382,106 @@ export default function SettingsPage() {
           </ActionButton>
         </div>
       </header>
+
+      <Card className="border border-border shadow-none">
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">系统更新</p>
+              <h2 className="mt-1 text-base font-semibold text-foreground">
+                {versionTitle}
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {versionInfo
+                  ? `当前 ${versionInfo.current.short_commit} · 最新 ${versionInfo.latest_short ?? versionInfo.current.short_commit}`
+                  : "正在从 GitHub 检查当前仓库的最新提交"}
+              </p>
+            </div>
+            <Badge
+              className={cn(
+                "w-fit ring-1",
+                versionError
+                  ? "bg-danger/10 text-danger ring-danger/20"
+                  : versionInfo?.has_update
+                  ? "bg-warning/10 text-warning ring-warning/20"
+                  : "bg-success/10 text-success ring-success/20",
+              )}
+            >
+              {versionBadge}
+            </Badge>
+          </div>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-4">
+            <StatTile
+              icon={RefreshCw}
+              label="当前版本"
+              value={versionInfo?.current.short_commit ?? "-"}
+              detail={versionInfo?.current.branch ?? "-"}
+              tone="brand"
+            />
+            <StatTile
+              icon={Gauge}
+              label="最新版本"
+              value={versionInfo?.latest_short ?? "-"}
+              detail={versionInfo?.checked_at ? relativeTime(versionInfo.checked_at) : "未检查"}
+              tone={versionInfo?.has_update ? "warning" : "success"}
+            />
+            <StatTile
+              icon={ArrowUpRight}
+              label="更新状态"
+              value={versionError ? "未知" : versionInfo?.has_update ? "有更新" : "最新"}
+              detail={versionError || versionInfo?.update_command || "-"}
+              tone={versionError ? "danger" : versionInfo?.has_update ? "warning" : "success"}
+            />
+            <StatTile
+              icon={FileJson}
+              label="仓库"
+              value={versionInfo?.current.repository ?? "csbsgyl/upstream-hub"}
+              detail={versionInfo?.update_url ?? "https://github.com/csbsgyl/upstream-hub"}
+              tone="muted"
+            />
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              disabled={version.loading}
+              onClick={() => version.refetch()}
+            >
+              <RefreshCw className={cn("size-3.5", version.loading && "animate-spin")} />
+              重新检查
+            </Button>
+            <ActionButton busy={busy} busyKey="copy-update" variant="outline" onClick={copyUpdateCommand}>
+              <ClipboardCopy className="size-3.5" />
+              复制更新命令
+            </ActionButton>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              asChild
+            >
+              <a href={versionInfo?.update_url ?? "https://github.com/csbsgyl/upstream-hub"} target="_blank" rel="noreferrer">
+                <ArrowUpRight className="size-3.5" />
+                打开仓库
+              </a>
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {versionInfo?.compare_url ? (
+                <a className="underline underline-offset-2 hover:text-foreground" href={versionInfo.compare_url} target="_blank" rel="noreferrer">
+                  查看差异
+                </a>
+              ) : (
+                "没有可比较的提交信息"
+              )}
+            </span>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="border border-border shadow-none">
         <CardContent className="p-4">

@@ -126,6 +126,16 @@ fi
 
 # ---- 5. 构建并启动 ----
 c_info "构建并启动容器（首次构建较慢，请耐心等待）…"
+export UPSTREAMHUB_VERSION="${UPSTREAMHUB_VERSION:-0.1.0-dev}"
+export UPSTREAMHUB_REPOSITORY="${UPSTREAMHUB_REPOSITORY:-csbsgyl/upstream-hub}"
+if [[ -d .git ]]; then
+  export UPSTREAMHUB_COMMIT="${UPSTREAMHUB_COMMIT:-$(git rev-parse HEAD 2>/dev/null || echo unknown)}"
+  export UPSTREAMHUB_BRANCH="${UPSTREAMHUB_BRANCH:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)}"
+else
+  export UPSTREAMHUB_COMMIT="${UPSTREAMHUB_COMMIT:-unknown}"
+  export UPSTREAMHUB_BRANCH="${UPSTREAMHUB_BRANCH:-main}"
+fi
+export UPSTREAMHUB_BUILD_TIME="${UPSTREAMHUB_BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
 ${COMPOSE} up -d --build
 
 # ---- 6. 健康检查 ----

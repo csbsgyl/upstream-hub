@@ -63,10 +63,7 @@ func Register(r *gin.Engine, d *Deps) {
 		api.Use(d.Auth.Middleware())
 	}
 	{
-		api.GET("/version", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"name": "upstream-hub", "version": "0.1.0-dev"})
-		})
-
+		registerVersion(api)
 		registerAuth(api, d)
 		registerChannels(api, d)
 		registerCaptchas(api, d)

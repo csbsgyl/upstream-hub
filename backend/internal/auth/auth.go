@@ -317,9 +317,10 @@ func (l *loginLimiter) Reset(key string) {
 //   - "/api/auth/login"
 func (s *Service) Middleware() gin.HandlerFunc {
 	whitelist := map[string]struct{}{
-		"/healthz":        {},
-		"/api/version":    {},
-		"/api/auth/login": {},
+		"/healthz":           {},
+		"/api/version":       {},
+		"/api/version/check": {},
+		"/api/auth/login":    {},
 	}
 	// mustChange=true 时仍允许访问的端点（已登录但需先改密）。
 	allowedDuringMustChange := map[string]struct{}{

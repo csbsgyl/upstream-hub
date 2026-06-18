@@ -25,6 +25,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        UPSTREAMHUB_VERSION: ${UPSTREAMHUB_VERSION:-0.1.0-dev}
+        UPSTREAMHUB_COMMIT: ${UPSTREAMHUB_COMMIT:-unknown}
+        UPSTREAMHUB_BRANCH: ${UPSTREAMHUB_BRANCH:-main}
+        UPSTREAMHUB_BUILD_TIME: ${UPSTREAMHUB_BUILD_TIME:-}
+        UPSTREAMHUB_REPOSITORY: ${UPSTREAMHUB_REPOSITORY:-csbsgyl/upstream-hub}
     container_name: upstreamhub
     restart: unless-stopped
     depends_on:

@@ -163,6 +163,31 @@ export interface BalanceTrendPoint {
   balance: number
 }
 
+export interface VersionInfo {
+  name: string
+  version: string
+  commit: string
+  short_commit: string
+  branch: string
+  build_time?: string
+  repository: string
+  repo_url: string
+  commit_known: boolean
+}
+
+export interface VersionCheck {
+  current: VersionInfo
+  latest_commit?: string
+  latest_short?: string
+  latest_html_url?: string
+  compare_url?: string
+  update_url: string
+  update_command: string
+  has_update: boolean
+  check_error?: string
+  checked_at: string
+}
+
 export interface AuditLog {
   id: number
   actor: string
