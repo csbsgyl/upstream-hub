@@ -172,10 +172,34 @@ export interface AuditLog {
 }
 
 export interface BackupState {
-  path: string
   name: string
+  source: string
   size: number
   updated_at: string
+}
+
+export interface OpsBackupResponse {
+  backup: BackupState
+  backups: BackupState[]
+}
+
+export interface OpsRetentionResult {
+  monitor_logs_deleted: number
+  balance_snapshots_deleted: number
+  notification_logs_deleted: number
+  monitor_logs_days: number
+  balance_snapshots_days: number
+  notification_logs_days: number
+  ran_at: string
+}
+
+export interface OpsScanResult {
+  ok: boolean
+  started: boolean
+  job: "balances" | "rates"
+  channels: number
+  message: string
+  started_at: string
 }
 
 export interface OpsStatus {

@@ -49,10 +49,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 
 # ---------- Stage 3: 运行时 ----------
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates tzdata wget && \
-    adduser -D -u 10001 upstream
-USER upstream
+RUN apk add --no-cache ca-certificates postgresql16-client su-exec tzdata wget && \
+    adduser -D -u 10001 upstream && \
+    mkdir -p /app/backups && \
+    chown -R upstream:upstream /app
 WORKDIR /app
 COPY --from=go-builder /out/upstream-hub /app/upstream-hub
 EXPOSE 8418
-ENTRYPOINT ["/app/upstream-hub"]
+ENTRYPOINT ["/bin/sh", "-c", "mkdir -p /app/backups && chown upstream:upstream /app/backups && exec su-exec upstream /app/upstream-hub"]

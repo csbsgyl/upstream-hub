@@ -38,6 +38,7 @@ backend/config.yaml
 
 # Volumes / 缓存
 postgres-data/
+backups/
 .claude/
 
 # 文档（构建不需要）

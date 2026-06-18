@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/worryzyy/upstream-hub/internal/config"
 	"github.com/worryzyy/upstream-hub/internal/notify"
 	"github.com/worryzyy/upstream-hub/internal/storage"
 )
@@ -123,5 +124,34 @@ func TestQueryIntClamped(t *testing.T) {
 	}
 	if got := queryIntClamped(c, "zero", 100, 1, 500); got != 1 {
 		t.Fatalf("zero clamp = %d, want 1", got)
+	}
+}
+
+func TestSafeBackupName(t *testing.T) {
+	valid, err := safeBackupName("upstream-hub-20260618-120000.sql.gz")
+	if err != nil || valid != "upstream-hub-20260618-120000.sql.gz" {
+		t.Fatalf("safeBackupName valid = %q, %v", valid, err)
+	}
+
+	for _, raw := range []string{"../secret.sql.gz", `..\secret.sql.gz`, "latest.json", "upstream.env", "", "nested/backup.sql.gz"} {
+		if _, err := safeBackupName(raw); err == nil {
+			t.Fatalf("safeBackupName(%q) returned nil error, want rejection", raw)
+		}
+	}
+}
+
+func TestDBDSN(t *testing.T) {
+	got := dbDSN(config.DatabaseConfig{
+		Host:    "postgres",
+		Port:    5432,
+		User:    "upstreamhub",
+		Name:    "upstream hub",
+		SSLMode: "disable",
+	})
+	if !strings.HasPrefix(got, "postgresql://upstreamhub@postgres:5432/upstream%20hub?") {
+		t.Fatalf("dbDSN = %q, want encoded host/path", got)
+	}
+	if !strings.Contains(got, "sslmode=disable") {
+		t.Fatalf("dbDSN = %q, want sslmode", got)
 	}
 }

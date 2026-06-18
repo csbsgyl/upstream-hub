@@ -1,28 +1,42 @@
 package api
 
 import (
+	"bytes"
+	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/worryzyy/upstream-hub/internal/config"
 )
 
 func registerOps(g *gin.RouterGroup, d *Deps) {
 	g.GET("/ops/status", func(c *gin.Context) { opsStatus(c, d) })
 	g.GET("/ops/diagnostics", func(c *gin.Context) { diagnostics(c, d) })
 	g.GET("/ops/audit-logs", func(c *gin.Context) { auditLogs(c, d) })
+	g.POST("/ops/backups", func(c *gin.Context) { createBackup(c, d) })
+	g.GET("/ops/backups/:name/download", func(c *gin.Context) { downloadBackup(c, d) })
+	g.POST("/ops/retention/run", func(c *gin.Context) { runRetentionNow(c, d) })
+	g.POST("/ops/scan/balances", func(c *gin.Context) { startOpsScan(c, d, "balances") })
+	g.POST("/ops/scan/rates", func(c *gin.Context) { startOpsScan(c, d, "rates") })
 }
 
 type backupState struct {
-	Path      string `json:"path"`
 	Name      string `json:"name"`
+	Source    string `json:"source"`
 	Size      int64  `json:"size"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -42,6 +56,30 @@ type opsStatusResponse struct {
 	RecentNotification []map[string]any `json:"recent_notification_logs"`
 	GeneratedAt        time.Time        `json:"generated_at"`
 }
+
+type retentionRunResponse struct {
+	MonitorLogsDeleted      int64     `json:"monitor_logs_deleted"`
+	BalanceSnapshotsDeleted int64     `json:"balance_snapshots_deleted"`
+	NotificationLogsDeleted int64     `json:"notification_logs_deleted"`
+	MonitorLogsDays         int       `json:"monitor_logs_days"`
+	BalanceSnapshotsDays    int       `json:"balance_snapshots_days"`
+	NotificationLogsDays    int       `json:"notification_logs_days"`
+	RanAt                   time.Time `json:"ran_at"`
+}
+
+type opsScanResponse struct {
+	OK        bool      `json:"ok"`
+	Started   bool      `json:"started"`
+	Job       string    `json:"job"`
+	Channels  int64     `json:"channels"`
+	Message   string    `json:"message"`
+	StartedAt time.Time `json:"started_at"`
+}
+
+var opsJobs = struct {
+	mu      sync.Mutex
+	running map[string]time.Time
+}{running: map[string]time.Time{}}
 
 func opsStatus(c *gin.Context, d *Deps) {
 	resp, err := buildOpsStatus(d)
@@ -182,6 +220,149 @@ func diagnostics(c *gin.Context, d *Deps) {
 	c.JSON(http.StatusOK, info)
 }
 
+func createBackup(c *gin.Context, d *Deps) {
+	backup, err := writeDatabaseBackup(c.Request.Context(), d)
+	if err != nil {
+		audit(c, d, "ops.backup", "ops", 0, "created database backup", gin.H{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		fail(c, http.StatusInternalServerError, err)
+		return
+	}
+	audit(c, d, "ops.backup", "ops", 0, "created database backup "+backup.Name, gin.H{
+		"ok":     true,
+		"name":   backup.Name,
+		"source": backup.Source,
+		"size":   backup.Size,
+	})
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"backup":  backup,
+			"backups": listBackups(),
+		},
+	})
+}
+
+func downloadBackup(c *gin.Context, d *Deps) {
+	name, err := safeBackupName(c.Param("name"))
+	if err != nil {
+		fail(c, http.StatusBadRequest, err)
+		return
+	}
+	path := filepath.Join(backupDir(), name)
+	info, err := os.Stat(path)
+	if err != nil {
+		fail(c, http.StatusNotFound, errors.New("backup file not found"))
+		return
+	}
+	if info.IsDir() {
+		fail(c, http.StatusNotFound, errors.New("backup file not found"))
+		return
+	}
+	audit(c, d, "ops.backup_download", "ops", 0, "downloaded database backup "+name, gin.H{
+		"name": name,
+		"size": info.Size(),
+	})
+	c.FileAttachment(path, name)
+}
+
+func runRetentionNow(c *gin.Context, d *Deps) {
+	res, err := applyRetention(d)
+	if err != nil {
+		audit(c, d, "ops.retention", "ops", 0, "ran retention cleanup", gin.H{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		fail(c, http.StatusInternalServerError, err)
+		return
+	}
+	audit(c, d, "ops.retention", "ops", 0, "ran retention cleanup", gin.H{
+		"ok":                        true,
+		"monitor_logs_deleted":      res.MonitorLogsDeleted,
+		"balance_snapshots_deleted": res.BalanceSnapshotsDeleted,
+		"notification_logs_deleted": res.NotificationLogsDeleted,
+		"monitor_logs_days":         res.MonitorLogsDays,
+		"balance_snapshots_days":    res.BalanceSnapshotsDays,
+		"notification_logs_days":    res.NotificationLogsDays,
+	})
+	c.JSON(http.StatusOK, gin.H{"data": res})
+}
+
+func startOpsScan(c *gin.Context, d *Deps, job string) {
+	if d == nil || d.Monitor == nil {
+		fail(c, http.StatusInternalServerError, errors.New("monitor service is unavailable"))
+		return
+	}
+	enabled, err := d.Channels.CountMonitorEnabled()
+	if err != nil {
+		fail(c, http.StatusInternalServerError, err)
+		return
+	}
+	if enabled == 0 {
+		c.JSON(http.StatusOK, gin.H{"data": opsScanResponse{
+			OK:        false,
+			Started:   false,
+			Job:       job,
+			Channels:  enabled,
+			Message:   "没有启用监控的渠道",
+			StartedAt: time.Now(),
+		}})
+		return
+	}
+
+	startedAt := time.Now()
+	if !claimOpsJob(job, startedAt) {
+		c.JSON(http.StatusOK, gin.H{"data": opsScanResponse{
+			OK:        false,
+			Started:   false,
+			Job:       job,
+			Channels:  enabled,
+			Message:   "这个任务已经在运行",
+			StartedAt: startedAt,
+		}})
+		return
+	}
+
+	action := "ops.scan_balances"
+	summary := "started balance scan"
+	if job == "rates" {
+		action = "ops.scan_rates"
+		summary = "started rate scan"
+	}
+	audit(c, d, action, "ops", 0, summary, gin.H{
+		"ok":       true,
+		"channels": enabled,
+	})
+
+	go func() {
+		defer releaseOpsJob(job)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		switch job {
+		case "balances":
+			d.Monitor.ScanAllBalances(ctx)
+		case "rates":
+			d.Monitor.ScanAllRates(ctx)
+		}
+	}()
+
+	message := "已开始后台扫描"
+	if job == "balances" {
+		message = "已开始后台扫描余额"
+	} else if job == "rates" {
+		message = "已开始后台扫描倍率"
+	}
+	c.JSON(http.StatusAccepted, gin.H{"data": opsScanResponse{
+		OK:        true,
+		Started:   true,
+		Job:       job,
+		Channels:  enabled,
+		Message:   message,
+		StartedAt: startedAt,
+	}})
+}
+
 func dbPing(sqlDB interface{ Ping() error }) string {
 	if sqlDB == nil {
 		return "unknown"
@@ -190,6 +371,215 @@ func dbPing(sqlDB interface{ Ping() error }) string {
 		return err.Error()
 	}
 	return "ok"
+}
+
+func writeDatabaseBackup(ctx context.Context, d *Deps) (backupState, error) {
+	if d == nil || d.Config == nil {
+		return backupState{}, errors.New("config is unavailable")
+	}
+	db := d.Config.Database
+	if strings.TrimSpace(db.Host) == "" || strings.TrimSpace(db.User) == "" || strings.TrimSpace(db.Name) == "" {
+		return backupState{}, errors.New("database connection config is incomplete")
+	}
+	pgDump, err := exec.LookPath("pg_dump")
+	if err != nil {
+		return backupState{}, errors.New("pg_dump is not available in the app runtime; rebuild the image with the PostgreSQL client installed")
+	}
+
+	dir := backupDir()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return backupState{}, fmt.Errorf("create backup directory: %w", err)
+	}
+
+	now := time.Now()
+	name := fmt.Sprintf("upstream-hub-%s.sql.gz", now.Format("20060102-150405"))
+	finalPath := filepath.Join(dir, name)
+	tmpPath := finalPath + ".tmp"
+	_ = os.Remove(tmpPath)
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
+	args := []string{"--dbname", dbDSN(db), "--no-owner", "--no-privileges"}
+	cmd := exec.CommandContext(ctx, pgDump, args...)
+	cmd.Env = os.Environ()
+	if db.Password != "" {
+		cmd.Env = append(cmd.Env, "PGPASSWORD="+db.Password)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return backupState{}, err
+	}
+
+	file, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return backupState{}, fmt.Errorf("create backup file: %w", err)
+	}
+	cleanup := true
+	defer func() {
+		_ = file.Close()
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	gz := gzip.NewWriter(file)
+	if err := cmd.Start(); err != nil {
+		_ = gz.Close()
+		return backupState{}, fmt.Errorf("start pg_dump: %w", err)
+	}
+	copyErr := copyAndClose(gz, stdout)
+	fileErr := file.Close()
+	waitErr := cmd.Wait()
+	if ctx.Err() != nil {
+		return backupState{}, ctx.Err()
+	}
+	if copyErr != nil {
+		return backupState{}, fmt.Errorf("write backup stream: %w", copyErr)
+	}
+	if fileErr != nil {
+		return backupState{}, fmt.Errorf("close backup file: %w", fileErr)
+	}
+	if waitErr != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = waitErr.Error()
+		}
+		return backupState{}, fmt.Errorf("pg_dump failed: %s", msg)
+	}
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		return backupState{}, fmt.Errorf("finalize backup file: %w", err)
+	}
+	cleanup = false
+
+	info, err := os.Stat(finalPath)
+	if err != nil {
+		return backupState{}, err
+	}
+	backup := backupState{
+		Name:      name,
+		Source:    "database",
+		Size:      info.Size(),
+		UpdatedAt: info.ModTime().Format(time.RFC3339),
+	}
+	_ = writeBackupMetadata(dir, backup)
+	return backup, nil
+}
+
+func copyAndClose(gz *gzip.Writer, r io.Reader) error {
+	if _, err := io.Copy(gz, r); err != nil {
+		_ = gz.Close()
+		return err
+	}
+	return gz.Close()
+}
+
+func dbDSN(db config.DatabaseConfig) string {
+	u := &url.URL{
+		Scheme: "postgresql",
+		User:   url.User(db.User),
+		Host:   net.JoinHostPort(db.Host, fmt.Sprint(db.Port)),
+		Path:   "/" + db.Name,
+	}
+	q := u.Query()
+	sslMode := strings.TrimSpace(db.SSLMode)
+	if sslMode == "" {
+		sslMode = "disable"
+	}
+	q.Set("sslmode", sslMode)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func writeBackupMetadata(dir string, backup backupState) error {
+	meta := map[string]any{
+		"created_at": time.Now().Format(time.RFC3339),
+		"sql":        backup.Name,
+		"source":     backup.Source,
+		"size":       backup.Size,
+	}
+	b, err := json.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "latest.json"), append(b, '\n'), 0600)
+}
+
+func safeBackupName(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if strings.ContainsAny(raw, `/\`) {
+		return "", errors.New("invalid backup name")
+	}
+	name := filepath.Base(raw)
+	if name == "." || name == "" || name != strings.TrimSpace(raw) {
+		return "", errors.New("invalid backup name")
+	}
+	if !strings.HasSuffix(strings.ToLower(name), ".sql.gz") {
+		return "", errors.New("only .sql.gz database backups can be downloaded")
+	}
+	return name, nil
+}
+
+func applyRetention(d *Deps) (*retentionRunResponse, error) {
+	if d == nil || d.Config == nil {
+		return nil, errors.New("config is unavailable")
+	}
+	r := d.Config.Scheduler.Retention
+	now := time.Now()
+	resp := &retentionRunResponse{
+		MonitorLogsDays:      r.MonitorLogsDays,
+		BalanceSnapshotsDays: r.BalanceSnapshotsDays,
+		NotificationLogsDays: r.NotificationLogsDays,
+		RanAt:                now,
+	}
+
+	var errs []string
+	if r.MonitorLogsDays > 0 {
+		n, err := d.MonLogs.DeleteBefore(now.AddDate(0, 0, -r.MonitorLogsDays))
+		if err != nil {
+			errs = append(errs, "monitor_logs: "+err.Error())
+		} else {
+			resp.MonitorLogsDeleted = n
+		}
+	}
+	if r.BalanceSnapshotsDays > 0 {
+		n, err := d.Rates.DeleteBalanceSnapshotsBefore(now.AddDate(0, 0, -r.BalanceSnapshotsDays))
+		if err != nil {
+			errs = append(errs, "balance_snapshots: "+err.Error())
+		} else {
+			resp.BalanceSnapshotsDeleted = n
+		}
+	}
+	if r.NotificationLogsDays > 0 {
+		n, err := d.Notifies.DeleteLogsBefore(now.AddDate(0, 0, -r.NotificationLogsDays))
+		if err != nil {
+			errs = append(errs, "notification_logs: "+err.Error())
+		} else {
+			resp.NotificationLogsDeleted = n
+		}
+	}
+	if len(errs) > 0 {
+		return resp, errors.New(strings.Join(errs, "; "))
+	}
+	return resp, nil
+}
+
+func claimOpsJob(job string, startedAt time.Time) bool {
+	opsJobs.mu.Lock()
+	defer opsJobs.mu.Unlock()
+	if _, ok := opsJobs.running[job]; ok {
+		return false
+	}
+	opsJobs.running[job] = startedAt
+	return true
+}
+
+func releaseOpsJob(job string) {
+	opsJobs.mu.Lock()
+	defer opsJobs.mu.Unlock()
+	delete(opsJobs.running, job)
 }
 
 func listBackups() []backupState {
@@ -203,7 +593,7 @@ func listBackups() []backupState {
 		if e.IsDir() {
 			continue
 		}
-		if !strings.HasSuffix(strings.ToLower(e.Name()), ".sql.gz") && !strings.HasSuffix(strings.ToLower(e.Name()), ".json") && !strings.HasSuffix(strings.ToLower(e.Name()), ".env") {
+		if !strings.HasSuffix(strings.ToLower(e.Name()), ".sql.gz") {
 			continue
 		}
 		info, err := e.Info()
@@ -211,7 +601,7 @@ func listBackups() []backupState {
 			continue
 		}
 		out = append(out, backupState{
-			Path:      filepath.Join(dir, e.Name()),
+			Source:    "database",
 			Name:      e.Name(),
 			Size:      info.Size(),
 			UpdatedAt: info.ModTime().Format(time.RFC3339),
