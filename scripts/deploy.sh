@@ -14,7 +14,7 @@
 #   1. 检查 docker / docker compose 是否就绪
 #   2. 首次运行时自动生成 .env（随机 APP_SECRET / POSTGRES_PASSWORD，默认开启登录）
 #   3. git pull 拉取最新代码
-#   4. 已有数据库容器时先执行 scripts/backup.sh
+#   4. 已有数据库容器时按间隔执行 scripts/backup.sh（默认 7 天一次，可手动备份）
 #   5. docker compose up -d --build 重新构建并启动
 #   6. 等待健康检查通过
 #
@@ -123,6 +123,69 @@ ensure_env_kv() {
 ensure_env_kv "UPSTREAMHUB_UPDATE_ENABLED" "true"
 set_env_kv "UPSTREAMHUB_UPDATE_HOST_DIR" "${ROOT_DIR}"
 ensure_env_kv "UPSTREAMHUB_UPDATE_IMAGE" "upstream-hub:local"
+ensure_env_kv "UPSTREAMHUB_DEPLOY_BACKUP_INTERVAL_DAYS" "7"
+
+env_value() {
+  local key="$1"
+  local raw=""
+  if [[ -f .env ]]; then
+    raw="$(grep -E "^${key}=" .env 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+  fi
+  raw="${raw%\"}"
+  raw="${raw#\"}"
+  raw="${raw%\'}"
+  raw="${raw#\'}"
+  printf '%s' "${raw}"
+}
+
+deploy_backup_dir() {
+  local dir="${UPSTREAMHUB_BACKUP_DIR:-$(env_value "UPSTREAMHUB_BACKUP_DIR")}"
+  printf '%s' "${dir:-./backups}"
+}
+
+deploy_backup_interval_days() {
+  local raw="${UPSTREAMHUB_DEPLOY_BACKUP_INTERVAL_DAYS:-$(env_value "UPSTREAMHUB_DEPLOY_BACKUP_INTERVAL_DAYS")}"
+  raw="${raw:-7}"
+  if [[ ! "${raw}" =~ ^[0-9]+$ ]]; then
+    c_warn "UPSTREAMHUB_DEPLOY_BACKUP_INTERVAL_DAYS=${raw} 无效，按 7 天处理"
+    raw="7"
+  fi
+  printf '%s' "${raw}"
+}
+
+latest_database_backup() {
+  local dir="$1"
+  [[ -d "${dir}" ]] || return 1
+  find "${dir}" -maxdepth 1 -type f -name 'upstream-hub-*.sql.gz' -printf '%T@ %p\n' 2>/dev/null \
+    | sort -nr \
+    | awk 'NR == 1 { sub(/^[^ ]+ /, ""); print }'
+}
+
+should_create_deploy_backup() {
+  local interval_days="$1"
+  local backup_dir="$2"
+  local latest
+  latest="$(latest_database_backup "${backup_dir}")"
+  if [[ -z "${latest}" || ! -f "${latest}" ]]; then
+    return 0
+  fi
+  # 兼容旧行为：0 表示每次部署都备份。
+  if [[ "${interval_days}" == "0" ]]; then
+    return 0
+  fi
+
+  local latest_ts now_ts max_age age
+  latest_ts="$(stat -c %Y "${latest}" 2>/dev/null || echo 0)"
+  now_ts="$(date +%s)"
+  max_age=$((interval_days * 24 * 60 * 60))
+  age=$((now_ts - latest_ts))
+  if (( age < max_age )); then
+    c_info "最近数据库备份未超过 ${interval_days} 天，跳过部署前自动备份：${latest}"
+    return 1
+  fi
+  c_info "最近数据库备份已超过 ${interval_days} 天，将执行部署前自动备份"
+  return 0
+}
 
 # ---- 3. 拉取最新代码 ----
 if [[ -d .git ]]; then
@@ -141,14 +204,20 @@ else
   c_warn "当前目录不是 git 仓库，跳过 git pull，用现有文件构建"
 fi
 
-# ---- 4. 已有部署则先做一次数据库备份 ----
+# ---- 4. 已有部署则按间隔做数据库备份 ----
 if [[ -f .env ]] && [[ -n "$(${COMPOSE} ps -q postgres 2>/dev/null || true)" ]]; then
-  c_info "检测到已有 Postgres 容器，部署前先备份数据库…"
-  if bash ./scripts/backup.sh >/dev/null; then
-    c_ok "部署前备份完成"
+  BACKUP_INTERVAL_DAYS="$(deploy_backup_interval_days)"
+  BACKUP_DIR="$(deploy_backup_dir)"
+  c_info "检测到已有 Postgres 容器，自动备份间隔：${BACKUP_INTERVAL_DAYS} 天（手动备份不受限制）"
+  if should_create_deploy_backup "${BACKUP_INTERVAL_DAYS}" "${BACKUP_DIR}"; then
+    if bash ./scripts/backup.sh >/dev/null; then
+      c_ok "部署前备份完成"
+    else
+      c_err "部署前备份失败，已停止部署，避免风险"
+      exit 1
+    fi
   else
-    c_err "部署前备份失败，已停止部署，避免风险"
-    exit 1
+    c_ok "部署前自动备份已跳过；需要时可在网页运维中心或运行 ./scripts/backup.sh 手动备份"
   fi
 else
   c_info "未检测到已有数据库容器，跳过部署前备份"

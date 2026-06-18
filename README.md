@@ -32,7 +32,9 @@
 curl -fsSL https://raw.githubusercontent.com/csbsgyl/upstream-hub/main/scripts/bootstrap.sh | bash
 ```
 
-它会自动：clone 仓库（已存在则更新）→ 检查 docker / compose → 首次生成 `.env`（随机 `APP_SECRET` / `POSTGRES_PASSWORD`，默认开启登录）→ `docker compose up -d --build` 构建并启动 → 等待健康检查。
+它会自动：clone 仓库（已存在则更新）→ 检查 docker / compose → 首次生成 `.env`（随机 `APP_SECRET` / `POSTGRES_PASSWORD`，默认开启登录）→ 按间隔做部署前数据库备份 → `docker compose up -d --build` 构建并启动 → 等待健康检查。
+
+> 部署脚本默认最多 7 天自动备份一次数据库，避免每次更新都堆积备份文件；需要临时备份时，可以在「运维中心」点“立即备份”，也可以手动运行 `./scripts/backup.sh`。
 
 > 前提：服务器已装好 `git`、`docker`、`docker compose`、`curl`。
 
