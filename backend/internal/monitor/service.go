@@ -3,8 +3,10 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/worryzyy/upstream-hub/internal/channel"
@@ -22,6 +24,7 @@ type Service struct {
 	channelSvc  *channel.Service
 	dispatcher  *notify.Dispatcher
 	log         *slog.Logger
+	scanMu      sync.Mutex
 }
 
 func NewService(
@@ -42,34 +45,156 @@ func NewService(
 	}
 }
 
+type RefreshAllError struct {
+	BalanceErr error
+	RatesErr   error
+}
+
+func (e *RefreshAllError) Error() string {
+	switch {
+	case e == nil:
+		return ""
+	case e.BalanceErr != nil && e.RatesErr != nil:
+		return e.BalanceErr.Error() + " | " + e.RatesErr.Error()
+	case e.BalanceErr != nil:
+		return e.BalanceErr.Error()
+	case e.RatesErr != nil:
+		return e.RatesErr.Error()
+	default:
+		return ""
+	}
+}
+
+func (e *RefreshAllError) Unwrap() []error {
+	if e == nil {
+		return nil
+	}
+	errs := make([]error, 0, 2)
+	if e.BalanceErr != nil {
+		errs = append(errs, e.BalanceErr)
+	}
+	if e.RatesErr != nil {
+		errs = append(errs, e.RatesErr)
+	}
+	return errs
+}
+
+func SplitRefreshAllError(err error) (balanceErr error, ratesErr error, ok bool) {
+	var refreshErr *RefreshAllError
+	if !errors.As(err, &refreshErr) || refreshErr == nil {
+		return nil, nil, false
+	}
+	return refreshErr.BalanceErr, refreshErr.RatesErr, true
+}
+
+// TryBeginScan starts a global monitor scan section. Callers that kick off
+// scheduler/manual scans use this shared guard to avoid overlapping refreshes
+// and duplicate notifications.
+func (s *Service) TryBeginScan(job string) (func(), bool) {
+	if !s.scanMu.TryLock() {
+		if s.log != nil {
+			s.log.Warn("skip scan because another scan is still running", "job", job)
+		}
+		return nil, false
+	}
+	return func() {
+		s.scanMu.Unlock()
+	}, true
+}
+
 // ScanAllBalances 扫描所有启用监控的渠道余额。单个失败不影响其他。
 func (s *Service) ScanAllBalances(ctx context.Context) {
+	s.ScanAllBalancesConcurrent(ctx, 1)
+}
+
+// ScanAllBalancesConcurrent 按并发上限扫描所有启用监控的渠道余额。
+func (s *Service) ScanAllBalancesConcurrent(ctx context.Context, concurrency int) {
+	s.scanAll(ctx, concurrency, "balance", func(c *storage.Channel) error {
+		return s.RefreshBalance(ctx, c)
+	})
+}
+
+func (s *Service) scanAll(ctx context.Context, concurrency int, job string, run func(*storage.Channel) error) {
 	list, err := s.channels.ListMonitorEnabled()
 	if err != nil {
 		s.log.Error("list channels", "err", err)
 		return
 	}
+	if len(list) == 0 {
+		s.log.Info("no monitor-enabled channels", "job", job)
+		return
+	}
+	if concurrency <= 0 {
+		concurrency = 1
+	}
+	if concurrency > len(list) {
+		concurrency = len(list)
+	}
+
+	jobs := make(chan storage.Channel)
+	var wg sync.WaitGroup
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for c := range jobs {
+				if err := run(&c); err != nil {
+					s.log.Warn("refresh failed", "job", job, "channel", c.Name, "err", err)
+				}
+			}
+		}()
+	}
+sendLoop:
 	for i := range list {
-		c := list[i]
-		if err := s.RefreshBalance(ctx, &c); err != nil {
-			s.log.Warn("refresh balance failed", "channel", c.Name, "err", err)
+		select {
+		case <-ctx.Done():
+			break sendLoop
+		case jobs <- list[i]:
 		}
 	}
+	close(jobs)
+	wg.Wait()
+}
+
+// ScanAllSync 同一轮里同步扫描余额和倍率，复用一次登录会话。
+// 适合默认调度路径，减少重复登录和重复失败通知。
+func (s *Service) ScanAllSync(ctx context.Context) {
+	s.ScanAllSyncConcurrent(ctx, 1)
+}
+
+// ScanAllSyncConcurrent 按并发上限同一轮同步余额和倍率。
+func (s *Service) ScanAllSyncConcurrent(ctx context.Context, concurrency int) {
+	s.scanAll(ctx, concurrency, "sync", func(c *storage.Channel) error {
+		return s.RefreshAll(ctx, c)
+	})
 }
 
 // ScanAllRates 扫描所有启用监控的渠道倍率。
 func (s *Service) ScanAllRates(ctx context.Context) {
-	list, err := s.channels.ListMonitorEnabled()
+	s.ScanAllRatesConcurrent(ctx, 1)
+}
+
+// ScanAllRatesConcurrent 按并发上限扫描所有启用监控的渠道倍率。
+func (s *Service) ScanAllRatesConcurrent(ctx context.Context, concurrency int) {
+	s.scanAll(ctx, concurrency, "rates", func(c *storage.Channel) error {
+		return s.RefreshRates(ctx, c)
+	})
+}
+
+// RefreshAll 先刷新余额，再刷新倍率，并复用同一个登录会话。
+// 单个渠道的任一步失败只影响该渠道，不影响其他渠道。
+func (s *Service) RefreshAll(ctx context.Context, c *storage.Channel) error {
+	resolved, conn, session, err := s.prepare(ctx, c)
 	if err != nil {
-		s.log.Error("list channels", "err", err)
-		return
+		s.notifyError(ctx, c, storage.EventLoginFailed, "登录失败", err)
+		return err
 	}
-	for i := range list {
-		c := list[i]
-		if err := s.RefreshRates(ctx, &c); err != nil {
-			s.log.Warn("refresh rates failed", "channel", c.Name, "err", err)
-		}
+	balanceErr := s.refreshBalanceWithSession(ctx, c, resolved, conn, session)
+	ratesErr := s.refreshRatesWithSession(ctx, c, resolved, conn, session)
+	if balanceErr == nil && ratesErr == nil {
+		return nil
 	}
+	return &RefreshAllError{BalanceErr: balanceErr, RatesErr: ratesErr}
 }
 
 // RefreshBalance 单个渠道余额刷新，可被 API 手动触发。
@@ -79,7 +204,10 @@ func (s *Service) RefreshBalance(ctx context.Context, c *storage.Channel) error 
 		s.notifyError(ctx, c, storage.EventLoginFailed, "登录失败", err)
 		return err
 	}
+	return s.refreshBalanceWithSession(ctx, c, resolved, conn, session)
+}
 
+func (s *Service) refreshBalanceWithSession(ctx context.Context, c *storage.Channel, resolved *connector.Channel, conn connector.Connector, session *connector.AuthSession) error {
 	progress.Start(ctx, progress.StageBalance, "拉取余额…")
 	started := time.Now()
 	res, err := conn.GetBalance(ctx, resolved, session)
@@ -132,7 +260,10 @@ func (s *Service) RefreshRates(ctx context.Context, c *storage.Channel) error {
 		s.notifyError(ctx, c, storage.EventLoginFailed, "登录失败", err)
 		return err
 	}
+	return s.refreshRatesWithSession(ctx, c, resolved, conn, session)
+}
 
+func (s *Service) refreshRatesWithSession(ctx context.Context, c *storage.Channel, resolved *connector.Channel, conn connector.Connector, session *connector.AuthSession) error {
 	progress.Start(ctx, progress.StageRates, "拉取分组倍率…")
 	started := time.Now()
 	results, err := conn.GetRates(ctx, resolved, session)

@@ -196,7 +196,7 @@ export interface OpsRetentionResult {
 export interface OpsScanResult {
   ok: boolean
   started: boolean
-  job: "balances" | "rates"
+  job: "sync" | "balances" | "rates"
   channels: number
   message: string
   started_at: string

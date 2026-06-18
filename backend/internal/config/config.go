@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -76,6 +77,7 @@ type AuthConfig struct {
 }
 
 type SchedulerConfig struct {
+	SyncCron    string          `mapstructure:"syncCron"`
 	BalanceCron string          `mapstructure:"balanceCron"`
 	RateCron    string          `mapstructure:"rateCron"`
 	Concurrency int             `mapstructure:"concurrency"`
@@ -129,7 +131,7 @@ type LogConfig struct {
 //	APP_SECRET                       -> security.appSecret
 //	UPSTREAMHUB_DATABASE_HOST        -> database.host
 //	UPSTREAMHUB_SERVER_PORT          -> server.port
-//	UPSTREAMHUB_SCHEDULER_BALANCECRON-> scheduler.balanceCron
+//	UPSTREAMHUB_SCHEDULER_SYNCCRON   -> scheduler.syncCron
 func Load(path string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigType("yaml")
@@ -163,6 +165,9 @@ func Load(path string) (*Config, error) {
 	_ = v.BindEnv("database.password", "UPSTREAMHUB_DATABASE_PASSWORD")
 	_ = v.BindEnv("database.name", "UPSTREAMHUB_DATABASE_NAME")
 	_ = v.BindEnv("database.sslMode", "UPSTREAMHUB_DATABASE_SSLMODE")
+	_ = v.BindEnv("scheduler.syncCron", "UPSTREAMHUB_SCHEDULER_SYNC_CRON", "UPSTREAMHUB_SCHEDULER_SYNCCRON")
+	_ = v.BindEnv("scheduler.balanceCron", "UPSTREAMHUB_SCHEDULER_BALANCE_CRON", "UPSTREAMHUB_SCHEDULER_BALANCECRON")
+	_ = v.BindEnv("scheduler.rateCron", "UPSTREAMHUB_SCHEDULER_RATE_CRON", "UPSTREAMHUB_SCHEDULER_RATECRON")
 	_ = v.BindEnv("notifications.batchRateChanges", "UPSTREAMHUB_NOTIFICATIONS_BATCH_RATE_CHANGES")
 	_ = v.BindEnv("notifications.minChangePct", "UPSTREAMHUB_NOTIFICATIONS_MIN_CHANGE_PCT")
 	_ = v.BindEnv("notifications.rateChangeDirection", "UPSTREAMHUB_NOTIFICATIONS_RATE_CHANGE_DIRECTION")
@@ -181,8 +186,30 @@ func Load(path string) (*Config, error) {
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+	applySchedulerEnvOverrides(&cfg.Scheduler)
 	normalizeNotificationsConfig(&cfg.Notifications)
 	return cfg, nil
+}
+
+func applySchedulerEnvOverrides(cfg *SchedulerConfig) {
+	if value, ok := lookupAnyEnv("UPSTREAMHUB_SCHEDULER_SYNC_CRON", "UPSTREAMHUB_SCHEDULER_SYNCCRON"); ok {
+		cfg.SyncCron = value
+	}
+	if value, ok := lookupAnyEnv("UPSTREAMHUB_SCHEDULER_BALANCE_CRON", "UPSTREAMHUB_SCHEDULER_BALANCECRON"); ok {
+		cfg.BalanceCron = value
+	}
+	if value, ok := lookupAnyEnv("UPSTREAMHUB_SCHEDULER_RATE_CRON", "UPSTREAMHUB_SCHEDULER_RATECRON"); ok {
+		cfg.RateCron = value
+	}
+}
+
+func lookupAnyEnv(names ...string) (string, bool) {
+	for _, name := range names {
+		if value, ok := os.LookupEnv(name); ok {
+			return value, true
+		}
+	}
+	return "", false
 }
 
 func normalizeNotificationsConfig(cfg *NotificationsConfig) {
@@ -227,9 +254,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.maxOpenConns", 20)
 	v.SetDefault("database.maxIdleConns", 5)
 
-	// CLAUDE.md 默认建议：余额 15 分钟，倍率 30 分钟。
-	v.SetDefault("scheduler.balanceCron", "37 */15 * * * *")
-	v.SetDefault("scheduler.rateCron", "13 */30 * * * *")
+	// 默认每 5 分钟同一轮采集余额 + 倍率，减少两套 cron 分开跑造成的重复登录。
+	// balanceCron/rateCron 保留给兼容和高级用户，默认关闭。
+	v.SetDefault("scheduler.syncCron", "37 */5 * * * *")
+	v.SetDefault("scheduler.balanceCron", "")
+	v.SetDefault("scheduler.rateCron", "")
 	v.SetDefault("scheduler.concurrency", 4)
 
 	// 历史清理：每天凌晨 3:17 跑一次（6 字段 cron 含秒），

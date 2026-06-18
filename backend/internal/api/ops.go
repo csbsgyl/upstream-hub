@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -30,6 +29,7 @@ func registerOps(g *gin.RouterGroup, d *Deps) {
 	g.POST("/ops/backups", func(c *gin.Context) { createBackup(c, d) })
 	g.GET("/ops/backups/:name/download", func(c *gin.Context) { downloadBackup(c, d) })
 	g.POST("/ops/retention/run", func(c *gin.Context) { runRetentionNow(c, d) })
+	g.POST("/ops/scan/sync", func(c *gin.Context) { startOpsScan(c, d, "sync") })
 	g.POST("/ops/scan/balances", func(c *gin.Context) { startOpsScan(c, d, "balances") })
 	g.POST("/ops/scan/rates", func(c *gin.Context) { startOpsScan(c, d, "rates") })
 }
@@ -76,11 +76,6 @@ type opsScanResponse struct {
 	StartedAt time.Time `json:"started_at"`
 }
 
-var opsJobs = struct {
-	mu      sync.Mutex
-	running map[string]time.Time
-}{running: map[string]time.Time{}}
-
 func opsStatus(c *gin.Context, d *Deps) {
 	resp, err := buildOpsStatus(d)
 	if err != nil {
@@ -122,6 +117,7 @@ func buildOpsStatus(d *Deps) (*opsStatusResponse, error) {
 		AuthEnabled:    d.Auth != nil,
 		AppSecretReady: strings.TrimSpace(d.Config.Security.AppSecret) != "",
 		Scheduler: map[string]any{
+			"sync_cron":    d.Config.Scheduler.SyncCron,
 			"balance_cron": d.Config.Scheduler.BalanceCron,
 			"rate_cron":    d.Config.Scheduler.RateCron,
 			"retention":    d.Config.Scheduler.Retention,
@@ -313,7 +309,8 @@ func startOpsScan(c *gin.Context, d *Deps, job string) {
 	}
 
 	startedAt := time.Now()
-	if !claimOpsJob(job, startedAt) {
+	releaseScan, ok := d.Monitor.TryBeginScan("ops." + job)
+	if !ok {
 		c.JSON(http.StatusOK, gin.H{"data": opsScanResponse{
 			OK:        false,
 			Started:   false,
@@ -327,7 +324,10 @@ func startOpsScan(c *gin.Context, d *Deps, job string) {
 
 	action := "ops.scan_balances"
 	summary := "started balance scan"
-	if job == "rates" {
+	if job == "sync" {
+		action = "ops.scan_sync"
+		summary = "started sync scan"
+	} else if job == "rates" {
 		action = "ops.scan_rates"
 		summary = "started rate scan"
 	}
@@ -337,19 +337,23 @@ func startOpsScan(c *gin.Context, d *Deps, job string) {
 	})
 
 	go func() {
-		defer releaseOpsJob(job)
+		defer releaseScan()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		switch job {
+		case "sync":
+			d.Monitor.ScanAllSyncConcurrent(ctx, d.Config.Scheduler.Concurrency)
 		case "balances":
-			d.Monitor.ScanAllBalances(ctx)
+			d.Monitor.ScanAllBalancesConcurrent(ctx, d.Config.Scheduler.Concurrency)
 		case "rates":
-			d.Monitor.ScanAllRates(ctx)
+			d.Monitor.ScanAllRatesConcurrent(ctx, d.Config.Scheduler.Concurrency)
 		}
 	}()
 
 	message := "已开始后台扫描"
-	if job == "balances" {
+	if job == "sync" {
+		message = "已开始后台同步余额和倍率"
+	} else if job == "balances" {
 		message = "已开始后台扫描余额"
 	} else if job == "rates" {
 		message = "已开始后台扫描倍率"
@@ -565,22 +569,6 @@ func applyRetention(d *Deps) (*retentionRunResponse, error) {
 		return resp, errors.New(strings.Join(errs, "; "))
 	}
 	return resp, nil
-}
-
-func claimOpsJob(job string, startedAt time.Time) bool {
-	opsJobs.mu.Lock()
-	defer opsJobs.mu.Unlock()
-	if _, ok := opsJobs.running[job]; ok {
-		return false
-	}
-	opsJobs.running[job] = startedAt
-	return true
-}
-
-func releaseOpsJob(job string) {
-	opsJobs.mu.Lock()
-	defer opsJobs.mu.Unlock()
-	delete(opsJobs.running, job)
 }
 
 func listBackups() []backupState {

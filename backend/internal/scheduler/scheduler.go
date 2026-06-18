@@ -42,6 +42,11 @@ func New(
 }
 
 func (s *Scheduler) Start() error {
+	if s.cfg.SyncCron != "" {
+		if _, err := s.cron.AddFunc(s.cfg.SyncCron, s.runSync); err != nil {
+			return err
+		}
+	}
 	if s.cfg.BalanceCron != "" {
 		if _, err := s.cron.AddFunc(s.cfg.BalanceCron, s.runBalance); err != nil {
 			return err
@@ -59,6 +64,7 @@ func (s *Scheduler) Start() error {
 	}
 	s.cron.Start()
 	s.log.Info("scheduler started",
+		"syncCron", s.cfg.SyncCron,
 		"balanceCron", s.cfg.BalanceCron,
 		"rateCron", s.cfg.RateCron,
 		"retentionCron", s.cfg.Retention.Cron,
@@ -73,16 +79,34 @@ func (s *Scheduler) Stop() {
 	}
 }
 
+func (s *Scheduler) runSync() {
+	s.runScan("sync", func(ctx context.Context) {
+		s.monitor.ScanAllSyncConcurrent(ctx, s.cfg.Concurrency)
+	})
+}
+
 func (s *Scheduler) runBalance() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	s.monitor.ScanAllBalances(ctx)
+	s.runScan("balance", func(ctx context.Context) {
+		s.monitor.ScanAllBalancesConcurrent(ctx, s.cfg.Concurrency)
+	})
 }
 
 func (s *Scheduler) runRates() {
+	s.runScan("rates", func(ctx context.Context) {
+		s.monitor.ScanAllRatesConcurrent(ctx, s.cfg.Concurrency)
+	})
+}
+
+func (s *Scheduler) runScan(job string, run func(context.Context)) {
+	release, ok := s.monitor.TryBeginScan(job)
+	if !ok {
+		return
+	}
+	defer release()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	s.monitor.ScanAllRates(ctx)
+	run(ctx)
 }
 
 func (s *Scheduler) hasRetention() bool {

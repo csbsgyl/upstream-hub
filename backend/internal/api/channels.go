@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/worryzyy/upstream-hub/internal/channel"
+	"github.com/worryzyy/upstream-hub/internal/monitor"
 	"github.com/worryzyy/upstream-hub/internal/progress"
 	"github.com/worryzyy/upstream-hub/internal/storage"
 )
@@ -264,6 +265,12 @@ func refreshBalance(c *gin.Context, d *Deps) {
 		fail(c, http.StatusNotFound, err)
 		return
 	}
+	releaseScan, ok := d.Monitor.TryBeginScan("channel.refresh_balance")
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "error": "这个任务已经在运行"})
+		return
+	}
+	defer releaseScan()
 	if err := d.Monitor.RefreshBalance(c.Request.Context(), ch); err != nil {
 		audit(c, d, "channel.refresh_balance", "channel", ch.ID, "refreshed channel balance "+ch.Name, gin.H{"ok": false, "error": err.Error()})
 		c.JSON(http.StatusOK, gin.H{"ok": false, "error": err.Error()})
@@ -284,6 +291,12 @@ func refreshRates(c *gin.Context, d *Deps) {
 		fail(c, http.StatusNotFound, err)
 		return
 	}
+	releaseScan, ok := d.Monitor.TryBeginScan("channel.refresh_rates")
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{"ok": false, "error": "这个任务已经在运行"})
+		return
+	}
+	defer releaseScan()
 	if err := d.Monitor.RefreshRates(c.Request.Context(), ch); err != nil {
 		audit(c, d, "channel.refresh_rates", "channel", ch.ID, "refreshed channel rates "+ch.Name, gin.H{"ok": false, "error": err.Error()})
 		c.JSON(http.StatusOK, gin.H{"ok": false, "error": err.Error()})
@@ -428,22 +441,35 @@ func syncChannel(c *gin.Context, d *Deps) {
 	obs := setupSSE(c)
 	ctx := progress.WithObserver(c.Request.Context(), obs)
 
-	// 串行执行：先余额，再倍率。任一步失败仍尝试下一个，但用 done 表示整体状态。
-	balErr := d.Monitor.RefreshBalance(ctx, ch)
-	rateErr := d.Monitor.RefreshRates(ctx, ch)
+	releaseScan, ok := d.Monitor.TryBeginScan("channel.sync")
+	if !ok {
+		progress.Fail(ctx, progress.StageError, "这个任务已经在运行")
+		return
+	}
+	defer releaseScan()
 
-	switch {
-	case balErr != nil && rateErr != nil:
-		audit(c, d, "channel.sync", "channel", ch.ID, "synced channel "+ch.Name, gin.H{"ok": false, "balance_error": balErr.Error(), "rates_error": rateErr.Error()})
-		progress.Fail(ctx, progress.StageError, balErr.Error()+" | "+rateErr.Error())
-	case balErr != nil:
-		audit(c, d, "channel.sync", "channel", ch.ID, "synced channel "+ch.Name, gin.H{"ok": false, "balance_error": balErr.Error()})
-		progress.Fail(ctx, progress.StageError, balErr.Error())
-	case rateErr != nil:
-		audit(c, d, "channel.sync", "channel", ch.ID, "synced channel "+ch.Name, gin.H{"ok": false, "rates_error": rateErr.Error()})
-		progress.Fail(ctx, progress.StageError, rateErr.Error())
-	default:
+	// RefreshAll reuses one upstream login session and still attempts rates if
+	// the balance endpoint fails.
+	err = d.Monitor.RefreshAll(ctx, ch)
+	if err == nil {
 		audit(c, d, "channel.sync", "channel", ch.ID, "synced channel "+ch.Name, gin.H{"ok": true})
 		progress.OK(ctx, progress.StageDone, "同步完成")
+		return
 	}
+	if balanceErr, ratesErr, ok := monitor.SplitRefreshAllError(err); ok {
+		switch {
+		case balanceErr != nil && ratesErr != nil:
+			audit(c, d, "channel.sync", "channel", ch.ID, "synced channel "+ch.Name, gin.H{"ok": false, "balance_error": balanceErr.Error(), "rates_error": ratesErr.Error()})
+			progress.Fail(ctx, progress.StageError, balanceErr.Error()+" | "+ratesErr.Error())
+		case balanceErr != nil:
+			audit(c, d, "channel.sync", "channel", ch.ID, "synced channel "+ch.Name, gin.H{"ok": false, "balance_error": balanceErr.Error()})
+			progress.Fail(ctx, progress.StageError, balanceErr.Error())
+		case ratesErr != nil:
+			audit(c, d, "channel.sync", "channel", ch.ID, "synced channel "+ch.Name, gin.H{"ok": false, "rates_error": ratesErr.Error()})
+			progress.Fail(ctx, progress.StageError, ratesErr.Error())
+		}
+		return
+	}
+	audit(c, d, "channel.sync", "channel", ch.ID, "synced channel "+ch.Name, gin.H{"ok": false, "error": err.Error()})
+	progress.Fail(ctx, progress.StageError, err.Error())
 }

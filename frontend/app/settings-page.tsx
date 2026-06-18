@@ -34,6 +34,7 @@ type BusyAction =
   | "diagnostics"
   | "copy"
   | "retention"
+  | "scan-sync"
   | "scan-balances"
   | "scan-rates"
   | `download-${string}`
@@ -236,8 +237,8 @@ export default function SettingsPage() {
     }).catch((e: Error) => toast.error(e.message || "复制失败"))
   }
 
-  async function scan(job: "balances" | "rates") {
-    const key = job === "balances" ? "scan-balances" : "scan-rates"
+  async function scan(job: "sync" | "balances" | "rates") {
+    const key = job === "sync" ? "scan-sync" : job === "balances" ? "scan-balances" : "scan-rates"
     await runAction(key, async () => {
       const res = await apiFetch<OpsScanResult>(`/ops/scan/${job}`, { method: "POST" })
       if (!res.started) {
@@ -310,6 +311,7 @@ export default function SettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1">
+            <Row label="同步定时" value={asText(s?.scheduler?.sync_cron)} />
             <Row label="余额定时" value={asText(s?.scheduler?.balance_cron)} />
             <Row label="倍率定时" value={asText(s?.scheduler?.rate_cron)} />
             <Row label="倍率合并" value={asText(s?.notifications?.batch_rate_changes)} />
@@ -342,14 +344,20 @@ export default function SettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-2">
-            <ActionButton busy={busy} busyKey="scan-balances" variant="outline" disabled={monitorEnabled === 0} onClick={() => scan("balances")}>
+            <ActionButton busy={busy} busyKey="scan-sync" disabled={monitorEnabled === 0} onClick={() => scan("sync")}>
               <Play className="size-3.5" />
-              立即扫描余额
+              立即同步余额和倍率
             </ActionButton>
-            <ActionButton busy={busy} busyKey="scan-rates" variant="outline" disabled={monitorEnabled === 0} onClick={() => scan("rates")}>
-              <Play className="size-3.5" />
-              立即扫描倍率
-            </ActionButton>
+            <div className="grid grid-cols-2 gap-2">
+              <ActionButton busy={busy} busyKey="scan-balances" variant="outline" disabled={monitorEnabled === 0} onClick={() => scan("balances")}>
+                <Play className="size-3.5" />
+                只扫余额
+              </ActionButton>
+              <ActionButton busy={busy} busyKey="scan-rates" variant="outline" disabled={monitorEnabled === 0} onClick={() => scan("rates")}>
+                <Play className="size-3.5" />
+                只扫倍率
+              </ActionButton>
+            </div>
             <ActionButton busy={busy} busyKey="retention" variant="outline" onClick={runRetention}>
               <Trash2 className="size-3.5" />
               执行日志清理
