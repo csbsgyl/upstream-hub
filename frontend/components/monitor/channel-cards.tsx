@@ -5,7 +5,6 @@ import { toast } from "sonner"
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronDown,
   CircleDollarSign,
   Clock3,
   Loader2,
@@ -46,7 +45,10 @@ function statusOf(c: Channel): Status {
 
 const statusMap: Record<Status, { label: string; cls: string }> = {
   healthy: { label: "健康", cls: "text-success bg-success/10" },
-  low: { label: "低余额", cls: "text-warning bg-warning/10" },
+  low: {
+    label: "低余额",
+    cls: "bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-300/80 dark:bg-amber-950/35 dark:text-amber-300 dark:ring-amber-400/40",
+  },
   failed: { label: "登录失败", cls: "text-danger bg-danger/10" },
   idle: { label: "尚未采集", cls: "text-muted-foreground bg-muted/40" },
 }
@@ -70,8 +72,8 @@ function StatusNotice({ channel, status }: { channel: Channel; status: Status })
   }
   if (status === "low") {
     return (
-      <div className="mt-3 flex items-start gap-2 rounded-md border border-warning/25 bg-warning/8 px-3 py-2 text-xs text-warning">
-        <CircleDollarSign className="mt-0.5 size-3.5 shrink-0" />
+      <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-300/80 bg-amber-50 px-3 py-2 text-xs text-amber-700 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.08)] dark:border-amber-400/40 dark:bg-amber-950/25 dark:text-amber-300">
+        <CircleDollarSign className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
         <span>余额低于阈值，请补充余额或调整告警阈值。</span>
       </div>
     )
@@ -104,98 +106,50 @@ function ratioTone(r: number): string {
   return "bg-muted text-foreground ring-border"
 }
 
-/** InlineRates 在渠道卡片内部展示当前所有分组倍率，默认 2 行折叠 + 展开按钮。 */
+/** InlineRates 在渠道卡片内部展示当前分组倍率；过多时在固定区域内滚动，避免卡片高度跳动。 */
 function InlineRates({ channelID }: { channelID: number }) {
   const { data, loading } = useChannelRates(channelID)
   const rates = [...(data ?? [])].sort((a, b) => a.ratio - b.ratio)
-  const [expanded, setExpanded] = useState(false)
-  const [hasOverflow, setHasOverflow] = useState(false)
-  const chipBoxRef = useRef<HTMLDivElement>(null)
-
-  // 监听 chip 容器尺寸变化，决定是否要显示"展开"按钮。
-  // 收起状态下 scrollHeight > clientHeight 表示有内容被裁剪。
-  useEffect(() => {
-    const el = chipBoxRef.current
-    if (!el) return
-    const check = () => {
-      if (expanded) return
-      setHasOverflow(el.scrollHeight > el.clientHeight + 1)
-    }
-    check()
-    const ro = new ResizeObserver(check)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [rates.length, expanded])
 
   if (loading) return null
   if (rates.length === 0) return null
 
-  const showToggle = hasOverflow || expanded
-
   return (
     <div className="mt-3 border-t border-border pt-2.5">
-      <div className="mb-1.5 flex items-center justify-between">
+      <div className="mb-1.5 flex items-center">
         <p className="text-[11px] text-muted-foreground">
           {rates.length} 个分组
         </p>
-        {showToggle ? (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
-          >
-            {expanded ? "收起" : "展开"}
-            <ChevronDown
-              className={cn(
-                "size-3 transition-transform duration-200",
-                expanded && "rotate-180",
-              )}
-            />
-          </button>
-        ) : null}
       </div>
 
-      <div className="relative">
-        <div
-          ref={chipBoxRef}
-          className={cn(
-            "flex flex-wrap gap-1 overflow-hidden transition-[max-height] duration-300 ease-out",
-            // 收起：max-h-12 (~48px) 约 2 行；展开：足够大的上限，留点缓冲让 transition 不立即消失。
-            expanded ? "max-h-150" : "max-h-12",
-          )}
-        >
-          {rates.map((r) => (
-            <Tooltip key={r.id} delayDuration={150}>
-              <TooltipTrigger asChild>
-                <span
-                  className={cn(
-                    "inline-flex cursor-default items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ring-1 ring-inset transition-colors hover:bg-muted/60",
-                    ratioTone(r.ratio),
-                  )}
-                >
-                  <span className="font-medium">{r.model_name}</span>
-                  <span className="font-semibold tabular-nums">{r.ratio.toFixed(2)}</span>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-xs text-xs">
-                <p className="font-medium">{r.model_name}</p>
-                {r.description ? (
-                  <p className="mt-0.5 text-muted-foreground">{r.description}</p>
-                ) : (
-                  <p className="mt-0.5 italic text-muted-foreground">{"(无描述)"}</p>
+      <div className="flex h-24 flex-wrap content-start gap-1 overflow-y-auto rounded-md border border-border/70 bg-muted/15 p-1.5 pr-1">
+        {rates.map((r) => (
+          <Tooltip key={r.id} delayDuration={150}>
+            <TooltipTrigger asChild>
+              <span
+                className={cn(
+                  "inline-flex cursor-default items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ring-1 ring-inset transition-colors hover:bg-muted/60",
+                  ratioTone(r.ratio),
                 )}
-                <p className="mt-0.5 text-muted-foreground">
-                  {"最近更新："}
-                  {relativeTime(r.last_seen_at)}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          ))}
-        </div>
-        {/* 折叠时底部淡出，提示还有更多内容 */}
-        {!expanded && hasOverflow ? (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-linear-to-t from-background to-transparent" />
-        ) : null}
+              >
+                <span className="font-medium">{r.model_name}</span>
+                <span className="font-semibold tabular-nums">{r.ratio.toFixed(2)}</span>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-xs text-xs">
+              <p className="font-medium">{r.model_name}</p>
+              {r.description ? (
+                <p className="mt-0.5 text-muted-foreground">{r.description}</p>
+              ) : (
+                <p className="mt-0.5 italic text-muted-foreground">{"(无描述)"}</p>
+              )}
+              <p className="mt-0.5 text-muted-foreground">
+                {"最近更新："}
+                {relativeTime(r.last_seen_at)}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        ))}
       </div>
     </div>
   )
@@ -453,7 +407,7 @@ export function ChannelCards() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+        <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
           {channels.map((c) => {
             const status = statusOf(c)
             const meta = statusMap[status]
@@ -462,9 +416,10 @@ export function ChannelCards() {
                 key={c.id}
                 id={`channel-${c.id}`}
                 className={cn(
-                  "flex flex-col gap-0 border border-border p-4 shadow-none transition-[box-shadow,border-color]",
+                  "flex h-full flex-col gap-0 border border-border p-4 shadow-none transition-[box-shadow,border-color]",
                   status === "failed" && "border-danger/30",
-                  status === "low" && "border-warning/30",
+                  status === "low" &&
+                    "border-amber-300/90 bg-amber-50/30 shadow-[0_0_0_1px_rgba(245,158,11,0.16),0_18px_38px_-30px_rgba(245,158,11,0.72)] dark:border-amber-400/45 dark:bg-amber-950/10",
                 )}
               >
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -561,48 +516,50 @@ export function ChannelCards() {
 
                 <SyncProgressStrip state={syncState[c.id] ?? emptySyncState()} />
 
-                <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-2.5">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1 text-xs text-muted-foreground"
-                    disabled={busyAction === `toggle-${c.id}`}
-                    onClick={() =>
-                      withBusy(`toggle-${c.id}`, () =>
-                        apiFetch(`/channels/${c.id}/${c.monitor_enabled ? "disable" : "enable"}`, {
-                          method: "POST",
-                        }),
-                      )
-                    }
-                  >
-                    {c.monitor_enabled ? (
-                      <Pause className="size-3" />
-                    ) : (
-                      <Play className="size-3" />
-                    )}
-                    {c.monitor_enabled ? "暂停监控" : "恢复监控"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    disabled={busyAction === `delete-${c.id}`}
-                    onClick={async () => {
-                      const ok = await confirm({
-                        title: `删除渠道 ${c.name}？`,
-                        description: "删除后该渠道的余额历史、倍率快照与登录凭据都将一并清除，且无法恢复。",
-                        confirmLabel: "删除",
-                        destructive: true,
-                      })
-                      if (!ok) return
-                      void withBusy(`delete-${c.id}`, () =>
-                        apiFetch(`/channels/${c.id}`, { method: "DELETE" }),
-                      )
-                    }}
-                  >
-                    <Trash2 className="size-3" />
-                    {"删除"}
-                  </Button>
+                <div className="mt-auto pt-3">
+                  <div className="flex items-center justify-between gap-2 border-t border-border pt-2.5">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1 text-xs text-muted-foreground"
+                      disabled={busyAction === `toggle-${c.id}`}
+                      onClick={() =>
+                        withBusy(`toggle-${c.id}`, () =>
+                          apiFetch(`/channels/${c.id}/${c.monitor_enabled ? "disable" : "enable"}`, {
+                            method: "POST",
+                          }),
+                        )
+                      }
+                    >
+                      {c.monitor_enabled ? (
+                        <Pause className="size-3" />
+                      ) : (
+                        <Play className="size-3" />
+                      )}
+                      {c.monitor_enabled ? "暂停监控" : "恢复监控"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      disabled={busyAction === `delete-${c.id}`}
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: `删除渠道 ${c.name}？`,
+                          description: "删除后该渠道的余额历史、倍率快照与登录凭据都将一并清除，且无法恢复。",
+                          confirmLabel: "删除",
+                          destructive: true,
+                        })
+                        if (!ok) return
+                        void withBusy(`delete-${c.id}`, () =>
+                          apiFetch(`/channels/${c.id}`, { method: "DELETE" }),
+                        )
+                      }}
+                    >
+                      <Trash2 className="size-3" />
+                      {"删除"}
+                    </Button>
+                  </div>
                 </div>
               </Card>
             )
