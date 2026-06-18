@@ -4,16 +4,18 @@ import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import {
   Activity,
+  AlertTriangle,
   BellRing,
+  CheckCircle2,
   ClipboardCopy,
   DatabaseBackup,
   Download,
   FileJson,
   Gauge,
+  HardDrive,
   Loader2,
   Play,
   RotateCcw,
-  ShieldCheck,
   Sparkles,
   Trash2,
 } from "lucide-react"
@@ -27,6 +29,7 @@ import { useAuditLogs, useFailedNotificationLogs, useOpsStatus } from "@/lib/que
 import { useTriggerRefresh } from "@/lib/refresh-context"
 import { relativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import type { ComponentType, ReactNode } from "react"
 import type { BackupState, OpsBackupResponse, OpsRetentionResult, OpsScanResult } from "@/lib/api-types"
 
 type BusyAction =
@@ -71,11 +74,73 @@ function formatSize(bytes?: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4 py-1.5 text-sm">
       <span className="text-muted-foreground">{label}</span>
       <span className="min-w-0 truncate text-right font-medium text-foreground">{value}</span>
+    </div>
+  )
+}
+
+type Tone = "brand" | "success" | "warning" | "danger" | "muted"
+
+function toneClass(tone: Tone) {
+  switch (tone) {
+    case "brand":
+      return {
+        icon: "bg-brand/10 text-brand ring-brand/15",
+        value: "text-brand",
+      }
+    case "success":
+      return {
+        icon: "bg-success/10 text-success ring-success/20",
+        value: "text-success",
+      }
+    case "warning":
+      return {
+        icon: "bg-warning/10 text-warning ring-warning/20",
+        value: "text-warning",
+      }
+    case "danger":
+      return {
+        icon: "bg-danger/10 text-danger ring-danger/20",
+        value: "text-danger",
+      }
+    default:
+      return {
+        icon: "bg-muted text-muted-foreground ring-border",
+        value: "text-foreground",
+      }
+  }
+}
+
+function StatTile({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone = "muted",
+}: {
+  icon: ComponentType<{ className?: string }>
+  label: string
+  value: ReactNode
+  detail?: ReactNode
+  tone?: Tone
+}) {
+  const cls = toneClass(tone)
+  return (
+    <div className="min-w-0 rounded-md border border-border bg-background px-3 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className={cn("mt-1 truncate text-xl font-semibold tracking-normal", cls.value)}>{value}</p>
+        </div>
+        <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-md ring-1", cls.icon)}>
+          <Icon className="size-4" />
+        </span>
+      </div>
+      {detail ? <p className="mt-2 truncate text-xs text-muted-foreground">{detail}</p> : null}
     </div>
   )
 }
@@ -91,7 +156,7 @@ function ActionButton({
 }: {
   busy: BusyAction | null
   busyKey: BusyAction
-  children: React.ReactNode
+  children: ReactNode
   className?: string
   disabled?: boolean
   onClick: () => void
@@ -127,7 +192,16 @@ export default function SettingsPage() {
   const latestBackup = s?.backups?.[0] ?? null
   const failed = failedNotifications.data ?? []
   const monitorEnabled = asNumber(s?.channels?.monitor_enabled)
+  const totalChannels = asNumber(s?.channels?.total)
   const failedMonitorLogs = asNumber(s?.channels?.failed)
+  const rateSnapshots = asNumber(s?.channels?.rate_snapshots)
+  const rateChanges = asNumber(s?.channels?.rate_changes)
+  const notifyEnabled = asNumber(s?.notifications?.enabled)
+  const notifyTotal = asNumber(s?.notifications?.total)
+  const failedNotifyCount = asNumber(s?.notifications?.failed_notification_logs)
+  const backupCount = s?.backups?.length ?? 0
+  const systemLoading = status.loading && !s
+  const systemReady = Boolean(s && s.database === "ok" && s.app_secret_ready)
 
   const diagnosticsSummary = useMemo(() => {
     if (!s) return ""
@@ -267,7 +341,7 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-lg font-semibold text-foreground">运维中心</h1>
           <p className="text-xs text-muted-foreground">
-            备份、手动扫描、通知补发、日志清理和诊断导出集中在这里执行。
+            备份、手动同步、失败补发、清理和诊断集中在这里处理。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -286,245 +360,306 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
-        <Card className="border border-border shadow-none">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <ShieldCheck className="size-4 text-success" />
-              系统自检
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <Row label="数据库" value={<Badge className={cn("ring-1", boolTone(s?.database === "ok"))}>{s?.database ?? "检查中"}</Badge>} />
-            <Row label="鉴权" value={<Badge variant="outline">{s ? (s.auth_enabled ? "已开启" : "未开启") : "-"}</Badge>} />
-            <Row label="APP_SECRET" value={<Badge className={cn("ring-1", boolTone(Boolean(s?.app_secret_ready)))}>{s?.app_secret_ready ? "已配置" : "缺失"}</Badge>} />
-            <Row label="当前账号" value={username ?? "-"} />
-            <Row label="状态生成" value={relativeTime(s?.generated_at)} />
-          </CardContent>
-        </Card>
-
-        <Card className="border border-border shadow-none">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <Activity className="size-4 text-brand" />
-              调度与通知
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <Row label="同步定时" value={asText(s?.scheduler?.sync_cron)} />
-            <Row label="余额定时" value={asText(s?.scheduler?.balance_cron)} />
-            <Row label="倍率定时" value={asText(s?.scheduler?.rate_cron)} />
-            <Row label="倍率合并" value={asText(s?.notifications?.batch_rate_changes)} />
-            <Row label="最小变动" value={`${asText(s?.notifications?.min_change_pct, "0")}%`} />
-            <Row label="失败通知" value={asText(s?.notifications?.failed_notification_logs, "0")} />
-          </CardContent>
-        </Card>
-
-        <Card className="border border-border shadow-none">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <Gauge className="size-4 text-warning" />
-              采集状态
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <Row label="启用渠道" value={monitorEnabled} />
-            <Row label="失败记录" value={<span className={failedMonitorLogs > 0 ? "text-danger" : ""}>{failedMonitorLogs}</span>} />
-            <Row label="倍率快照" value={asText(s?.channels?.rate_snapshots, "0")} />
-            <Row label="倍率变动" value={asText(s?.channels?.rate_changes, "0")} />
-            <Row label="通知渠道" value={`${asNumber(s?.notifications?.enabled)} / ${asNumber(s?.notifications?.total)}`} />
-          </CardContent>
-        </Card>
-
-        <Card className="border border-border shadow-none">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <Sparkles className="size-4 text-brand" />
-              快速操作
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2">
-            <ActionButton busy={busy} busyKey="scan-sync" disabled={monitorEnabled === 0} onClick={() => scan("sync")}>
-              <Play className="size-3.5" />
-              立即同步余额和倍率
-            </ActionButton>
-            <div className="grid grid-cols-2 gap-2">
-              <ActionButton busy={busy} busyKey="scan-balances" variant="outline" disabled={monitorEnabled === 0} onClick={() => scan("balances")}>
-                <Play className="size-3.5" />
-                只扫余额
-              </ActionButton>
-              <ActionButton busy={busy} busyKey="scan-rates" variant="outline" disabled={monitorEnabled === 0} onClick={() => scan("rates")}>
-                <Play className="size-3.5" />
-                只扫倍率
-              </ActionButton>
+      <Card className="border border-border shadow-none">
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              <span
+                className={cn(
+                  "flex size-11 shrink-0 items-center justify-center rounded-md ring-1",
+                  systemLoading
+                    ? "bg-muted text-muted-foreground ring-border"
+                    : systemReady
+                      ? "bg-success/10 text-success ring-success/20"
+                      : "bg-warning/10 text-warning ring-warning/20",
+                )}
+              >
+                {systemLoading ? (
+                  <Loader2 className="size-5 animate-spin" />
+                ) : systemReady ? (
+                  <CheckCircle2 className="size-5" />
+                ) : (
+                  <AlertTriangle className="size-5" />
+                )}
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base font-semibold text-foreground">
+                    {systemLoading ? "正在读取系统状态" : systemReady ? "系统运行正常" : "系统需要关注"}
+                  </h2>
+                  {systemLoading ? (
+                    <Badge variant="outline">加载中</Badge>
+                  ) : (
+                    <>
+                      <Badge className={cn("ring-1", boolTone(s?.database === "ok"))}>
+                        数据库 {s?.database ?? "检查中"}
+                      </Badge>
+                      <Badge className={cn("ring-1", boolTone(Boolean(s?.app_secret_ready)))}>
+                        APP_SECRET {s?.app_secret_ready ? "已配置" : "缺失"}
+                      </Badge>
+                    </>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {systemLoading
+                    ? "正在连接后端并拉取最新运维摘要"
+                    : `当前账号 ${username ?? "-"}，状态生成于 ${relativeTime(s?.generated_at)}`}
+                </p>
+              </div>
             </div>
-            <ActionButton busy={busy} busyKey="retention" variant="outline" onClick={runRetention}>
-              <Trash2 className="size-3.5" />
-              执行日志清理
-            </ActionButton>
-          </CardContent>
-        </Card>
-      </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <Card className="border border-border shadow-none">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <DatabaseBackup className="size-4 text-warning" />
-              数据库备份
-            </CardTitle>
-            <Badge variant="outline">{s?.backups?.length ?? 0}</Badge>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-              <Row label="最新备份" value={latestBackup ? latestBackup.name : "未发现"} />
-              <Row label="备份时间" value={latestBackup ? relativeTime(latestBackup.updated_at) : "-"} />
-              <Row label="文件大小" value={latestBackup ? formatSize(latestBackup.size) : "-"} />
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:w-[720px]">
+              <StatTile
+                icon={Gauge}
+                label="监控渠道"
+                value={`${monitorEnabled}/${totalChannels}`}
+                detail={failedMonitorLogs > 0 ? `${failedMonitorLogs} 条失败记录` : "采集正常"}
+                tone={failedMonitorLogs > 0 ? "danger" : "success"}
+              />
+              <StatTile
+                icon={Activity}
+                label="同步频率"
+                value={asText(s?.scheduler?.sync_cron)}
+                detail={`并发 ${asText(s?.scheduler?.concurrency, "1")}`}
+                tone="brand"
+              />
+              <StatTile
+                icon={BellRing}
+                label="通知渠道"
+                value={`${notifyEnabled}/${notifyTotal}`}
+                detail={failedNotifyCount > 0 ? `${failedNotifyCount} 条发送失败` : "无失败通知"}
+                tone={failedNotifyCount > 0 ? "danger" : "success"}
+              />
+              <StatTile
+                icon={HardDrive}
+                label="倍率追踪"
+                value={rateChanges}
+                detail={`${rateSnapshots} 个快照 · ${backupCount} 个备份`}
+                tone={rateChanges > 0 ? "warning" : "muted"}
+              />
             </div>
-            {!s?.backups?.length ? (
-              <p className="text-xs text-muted-foreground">还没有可下载的数据库备份。点击“立即备份”会生成新的 .sql.gz 文件。</p>
-            ) : (
-              <ScrollArea className="h-56">
-                <ul className="divide-y divide-border">
-                  {s.backups.map((file) => (
-                    <li key={file.name} className="flex items-center justify-between gap-3 py-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">{file.name}</p>
-                        <p className="mt-0.5 text-[11px] text-muted-foreground">
-                          {formatSize(file.size)}
-                          {" · "}
-                          {relativeTime(file.updated_at)}
-                        </p>
-                      </div>
-                      <ActionButton
-                        busy={busy}
-                        busyKey={`download-${file.name}`}
-                        variant="outline"
-                        className="h-7 shrink-0 text-xs"
-                        onClick={() => downloadBackup(file)}
-                      >
-                        <Download className="size-3" />
-                        下载
-                      </ActionButton>
-                    </li>
-                  ))}
-                </ul>
-              </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        </CardContent>
+      </Card>
 
-        <Card className="border border-border shadow-none">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <BellRing className="size-4 text-danger" />
-              失败通知补发
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">{failed.length}</Badge>
-              <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => failedNotifications.refetch()}>
-                <RotateCcw className="size-3" />
-                刷新
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="px-0">
-            {failedNotifications.loading ? (
-              <p className="px-6 py-4 text-xs text-muted-foreground">加载中...</p>
-            ) : failed.length === 0 ? (
-              <p className="px-6 py-4 text-xs text-muted-foreground">暂无失败通知。</p>
-            ) : (
-              <ScrollArea className="h-80">
-                <ul className="divide-y divide-border">
-                  {failed.map((log) => (
-                    <li key={log.id} className="flex items-center justify-between gap-3 px-6 py-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">{log.subject}</p>
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-3">
+          <Card className="border border-border shadow-none">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <DatabaseBackup className="size-4 text-warning" />
+                数据库备份
+              </CardTitle>
+              <Badge variant="outline">{backupCount}</Badge>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2 rounded-md border border-border bg-muted/25 p-3 md:grid-cols-3">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">最新备份</p>
+                  <p className="mt-1 truncate text-sm font-medium text-foreground">
+                    {latestBackup ? latestBackup.name : "未发现"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">备份时间</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">
+                    {latestBackup ? relativeTime(latestBackup.updated_at) : "-"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">文件大小</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">
+                    {latestBackup ? formatSize(latestBackup.size) : "-"}
+                  </p>
+                </div>
+              </div>
+              {!s?.backups?.length ? (
+                <p className="text-xs text-muted-foreground">
+                  还没有可下载的数据库备份。点击“立即备份”会生成新的 .sql.gz 文件。
+                </p>
+              ) : (
+                <ScrollArea className="h-44">
+                  <ul className="divide-y divide-border">
+                    {s.backups.map((file) => (
+                      <li key={file.name} className="flex items-center justify-between gap-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-foreground">{file.name}</p>
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            {formatSize(file.size)}
+                            {" · "}
+                            {relativeTime(file.updated_at)}
+                          </p>
+                        </div>
+                        <ActionButton
+                          busy={busy}
+                          busyKey={`download-${file.name}`}
+                          variant="outline"
+                          className="h-7 shrink-0 text-xs"
+                          onClick={() => downloadBackup(file)}
+                        >
+                          <Download className="size-3" />
+                          下载
+                        </ActionButton>
+                      </li>
+                    ))}
+                  </ul>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border shadow-none">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <FileJson className="size-4 text-muted-foreground" />
+                操作审计
+              </CardTitle>
+              <Badge variant="outline">{audits.data?.length ?? 0}</Badge>
+            </CardHeader>
+            <CardContent className="px-0">
+              {audits.loading ? (
+                <p className="px-6 py-4 text-xs text-muted-foreground">加载中...</p>
+              ) : !audits.data || audits.data.length === 0 ? (
+                <p className="px-6 py-4 text-xs text-muted-foreground">暂无审计记录。</p>
+              ) : (
+                <ScrollArea className="h-72">
+                  <ul className="divide-y divide-border">
+                    {audits.data.map((log) => (
+                      <li key={log.id} className="px-6 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="truncate text-sm font-medium text-foreground">{log.summary}</p>
+                          <span className="shrink-0 text-[11px] text-muted-foreground">{relativeTime(log.created_at)}</span>
+                        </div>
                         <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                          {log.event}
+                          {log.actor}
                           {" · "}
-                          {relativeTime(log.sent_at)}
-                          {log.error_message ? ` · ${log.error_message}` : ""}
+                          {log.action}
+                          {" · "}
+                          {log.resource_type}
+                          {log.resource_id ? ` #${log.resource_id}` : ""}
                         </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 shrink-0 gap-1 text-xs"
-                        disabled={busyRetry === log.id}
-                        onClick={() => retryLog(log.id)}
-                      >
-                        <RotateCcw className={cn("size-3", busyRetry === log.id && "animate-spin")} />
-                        重发
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                      </li>
+                    ))}
+                  </ul>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <Card className="border border-border shadow-none">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <Trash2 className="size-4 text-muted-foreground" />
-              日志清理结果
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <Row label="监控日志保留" value={`${retentionValue(s?.scheduler?.retention, "monitorLogsDays", "MonitorLogsDays", "30")} 天`} />
-            <Row label="余额采样保留" value={`${retentionValue(s?.scheduler?.retention, "balanceSnapshotsDays", "BalanceSnapshotsDays", "90")} 天`} />
-            <Row label="通知日志保留" value={`${retentionValue(s?.scheduler?.retention, "notificationLogsDays", "NotificationLogsDays", "90")} 天`} />
-            <Row label="上次手动清理" value={lastRetention ? relativeTime(lastRetention.ran_at) : "本页未执行"} />
-            <Row label="已删监控日志" value={lastRetention?.monitor_logs_deleted ?? "-"} />
-            <Row label="已删余额采样" value={lastRetention?.balance_snapshots_deleted ?? "-"} />
-            <Row label="已删通知日志" value={lastRetention?.notification_logs_deleted ?? "-"} />
-            <p className="pt-2 text-[11px] leading-relaxed text-muted-foreground">
-              倍率变动历史不会被这个按钮清理，避免丢失核心追踪记录。
-            </p>
-          </CardContent>
-        </Card>
+        <aside className="space-y-3 xl:sticky xl:top-20 xl:self-start">
+          <Card className="border border-border shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <Sparkles className="size-4 text-brand" />
+                快速操作
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-2">
+              <ActionButton
+                busy={busy}
+                busyKey="scan-sync"
+                className="h-9"
+                disabled={monitorEnabled === 0}
+                onClick={() => scan("sync")}
+              >
+                <Play className="size-3.5" />
+                立即同步余额和倍率
+              </ActionButton>
+              <div className="grid grid-cols-2 gap-2">
+                <ActionButton busy={busy} busyKey="scan-balances" variant="outline" disabled={monitorEnabled === 0} onClick={() => scan("balances")}>
+                  <Play className="size-3.5" />
+                  只扫余额
+                </ActionButton>
+                <ActionButton busy={busy} busyKey="scan-rates" variant="outline" disabled={monitorEnabled === 0} onClick={() => scan("rates")}>
+                  <Play className="size-3.5" />
+                  只扫倍率
+                </ActionButton>
+              </div>
+              <ActionButton busy={busy} busyKey="retention" variant="outline" onClick={runRetention}>
+                <Trash2 className="size-3.5" />
+                执行日志清理
+              </ActionButton>
+            </CardContent>
+          </Card>
 
-        <Card className="border border-border shadow-none">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <FileJson className="size-4 text-muted-foreground" />
-              操作审计
-            </CardTitle>
-            <Badge variant="outline">{audits.data?.length ?? 0}</Badge>
-          </CardHeader>
-          <CardContent className="px-0">
-            {audits.loading ? (
-              <p className="px-6 py-4 text-xs text-muted-foreground">加载中...</p>
-            ) : !audits.data || audits.data.length === 0 ? (
-              <p className="px-6 py-4 text-xs text-muted-foreground">暂无审计记录。</p>
-            ) : (
-              <ScrollArea className="h-80">
-                <ul className="divide-y divide-border">
-                  {audits.data.map((log) => (
-                    <li key={log.id} className="px-6 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="truncate text-sm font-medium text-foreground">{log.summary}</p>
-                        <span className="shrink-0 text-[11px] text-muted-foreground">{relativeTime(log.created_at)}</span>
-                      </div>
-                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                        {log.actor}
-                        {" · "}
-                        {log.action}
-                        {" · "}
-                        {log.resource_type}
-                        {log.resource_id ? ` #${log.resource_id}` : ""}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
+          <Card className="border border-border shadow-none">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <Activity className="size-4 text-brand" />
+                调度与保留
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              <Row label="同步定时" value={asText(s?.scheduler?.sync_cron)} />
+              <Row label="余额定时" value={asText(s?.scheduler?.balance_cron)} />
+              <Row label="倍率定时" value={asText(s?.scheduler?.rate_cron)} />
+              <Row label="倍率合并" value={asText(s?.notifications?.batch_rate_changes)} />
+              <Row label="最小变动" value={`${asText(s?.notifications?.min_change_pct, "0")}%`} />
+              <Row label="监控日志" value={`${retentionValue(s?.scheduler?.retention, "monitorLogsDays", "MonitorLogsDays", "30")} 天`} />
+              <Row label="余额采样" value={`${retentionValue(s?.scheduler?.retention, "balanceSnapshotsDays", "BalanceSnapshotsDays", "90")} 天`} />
+              <Row label="通知日志" value={`${retentionValue(s?.scheduler?.retention, "notificationLogsDays", "NotificationLogsDays", "90")} 天`} />
+              <Row label="上次清理" value={lastRetention ? relativeTime(lastRetention.ran_at) : "本页未执行"} />
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border shadow-none">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <BellRing className="size-4 text-danger" />
+                失败通知补发
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">{failed.length}</Badge>
+                <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => failedNotifications.refetch()}>
+                  <RotateCcw className="size-3" />
+                  刷新
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="px-0">
+              {failedNotifications.loading ? (
+                <p className="px-6 py-4 text-xs text-muted-foreground">加载中...</p>
+              ) : failed.length === 0 ? (
+                <p className="px-6 py-4 text-xs text-muted-foreground">暂无失败通知。</p>
+              ) : (
+                <ScrollArea className="h-64">
+                  <ul className="divide-y divide-border">
+                    {failed.map((log) => (
+                      <li key={log.id} className="px-6 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-foreground">{log.subject}</p>
+                            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                              {log.event}
+                              {" · "}
+                              {relativeTime(log.sent_at)}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 shrink-0 gap-1 text-xs"
+                            disabled={busyRetry === log.id}
+                            onClick={() => retryLog(log.id)}
+                          >
+                            <RotateCcw className={cn("size-3", busyRetry === log.id && "animate-spin")} />
+                            重发
+                          </Button>
+                        </div>
+                        {log.error_message ? (
+                          <p className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-danger">
+                            {log.error_message}
+                          </p>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </aside>
       </div>
     </section>
   )
