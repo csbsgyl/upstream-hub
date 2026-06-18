@@ -33,7 +33,14 @@ import { useTriggerRefresh } from "@/lib/refresh-context"
 import { relativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { ComponentType, ReactNode } from "react"
-import type { BackupState, OpsBackupResponse, OpsRetentionResult, OpsScanResult, OpsUpdateResult } from "@/lib/api-types"
+import type {
+  BackupState,
+  OpsBackupResponse,
+  OpsRetentionResult,
+  OpsScanResult,
+  OpsUpdateResult,
+  VersionCheck,
+} from "@/lib/api-types"
 
 type BusyAction =
   | "backup"
@@ -315,6 +322,7 @@ export default function SettingsPage() {
   const [lastRetention, setLastRetention] = useState<OpsRetentionResult | null>(null)
   const [lastUpdate, setLastUpdate] = useState<OpsUpdateResult | null>(null)
   const [updateStartedAt, setUpdateStartedAt] = useState<string | null>(null)
+  const [forcedVersionInfo, setForcedVersionInfo] = useState<VersionCheck | null>(null)
   const { confirm, dialog } = useConfirm()
 
   const s = status.data
@@ -331,7 +339,7 @@ export default function SettingsPage() {
   const backupCount = s?.backups?.length ?? 0
   const systemLoading = status.loading && !s
   const systemReady = Boolean(s && s.database === "ok" && s.app_secret_ready)
-  const versionInfo = version.data
+  const versionInfo = forcedVersionInfo ?? version.data
   const versionError = version.error || versionInfo?.check_error || ""
   const versionTitle = version.loading
     ? "正在检查版本"
@@ -352,6 +360,12 @@ export default function SettingsPage() {
       setUpdateStartedAt(null)
     }
   }, [lastUpdate, version.data, version.loading])
+
+  useEffect(() => {
+    if (forcedVersionInfo && version.data && version.data.current.commit !== forcedVersionInfo.current.commit) {
+      setForcedVersionInfo(null)
+    }
+  }, [forcedVersionInfo, version.data])
 
   useEffect(() => {
     if (!lastUpdate) return
@@ -403,11 +417,13 @@ export default function SettingsPage() {
     await runAction(
       "version-check",
       async () => {
+        const fresh = await apiFetch<VersionCheck>("/version/check?force=1")
+        setForcedVersionInfo(fresh)
         version.refetch()
-        toast.success("已发起版本检查", { duration: 1600 })
+        toast.success(fresh.has_update ? "检测到新版本" : "已刷新版本检查", { duration: 1600 })
       },
       900,
-    )
+    ).catch((e: Error) => toast.error(e.message || "版本检查失败"))
   }
 
   async function retryLog(id: number) {

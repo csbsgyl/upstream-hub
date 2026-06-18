@@ -45,6 +45,7 @@ func registerVersion(g *gin.RouterGroup, d *Deps) {
 
 func checkVersion(c *gin.Context, d *Deps) {
 	current := appversion.Current()
+	force := c.Query("force") == "1" || c.Query("force") == "true"
 	resp := versionCheckResponse{
 		Current:       current,
 		UpdateURL:     current.RepoURL,
@@ -55,7 +56,7 @@ func checkVersion(c *gin.Context, d *Deps) {
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
-	latest, err := fetchLatestGitHubCommit(ctx, current.Repository, current.Branch)
+	latest, err := fetchLatestGitHubCommit(ctx, current.Repository, current.Branch, force)
 	if err != nil {
 		resp.CheckError = err.Error()
 		c.JSON(http.StatusOK, gin.H{"data": resp})
@@ -77,7 +78,7 @@ type githubCommitResponse struct {
 	HTMLURL string `json:"html_url"`
 }
 
-func fetchLatestGitHubCommit(ctx context.Context, repo, branch string) (*githubCommitResponse, error) {
+func fetchLatestGitHubCommit(ctx context.Context, repo, branch string, force bool) (*githubCommitResponse, error) {
 	if repo == "" {
 		repo = appversion.Current().Repository
 	}
@@ -87,13 +88,15 @@ func fetchLatestGitHubCommit(ctx context.Context, repo, branch string) (*githubC
 	cacheKey := repo + "@" + branch
 	now := time.Now()
 
-	versionCheckMu.Lock()
-	if cached, ok := versionCheckCache[cacheKey]; ok && cached.expiresAt.After(now) {
-		latest := cached.latest
+	if !force {
+		versionCheckMu.Lock()
+		if cached, ok := versionCheckCache[cacheKey]; ok && cached.expiresAt.After(now) {
+			latest := cached.latest
+			versionCheckMu.Unlock()
+			return &latest, nil
+		}
 		versionCheckMu.Unlock()
-		return &latest, nil
 	}
-	versionCheckMu.Unlock()
 
 	url := fmt.Sprintf("https://api.github.com/repos/%s/commits/%s", repo, branch)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
