@@ -15,6 +15,7 @@ import (
 //   - RateChangeDirection：rate_changed 方向过滤，all / increase / decrease
 //   - QuietGroups：不推送指定分组名的 rate_changed（仍写入 RateChangeLog 表）
 //   - BalanceLowCooldown：同渠道 balance_low 在窗口内不重复发送
+//   - FailureCooldown：同渠道登录/采集失败在窗口内不重复发送
 //   - SendMaxAttempts：单条消息最多发送尝试次数（含首发），<=1 表示不重试
 type Policy struct {
 	BatchRateChanges    bool
@@ -22,6 +23,7 @@ type Policy struct {
 	RateChangeDirection string
 	QuietGroups         []string
 	BalanceLowCooldown  time.Duration
+	FailureCooldown     time.Duration
 	SendMaxAttempts     int
 }
 
@@ -51,11 +53,21 @@ func (rc RateChange) ChangePctAbove(minPct float64) bool {
 	if minPct <= 0 {
 		return true
 	}
-	if rc.OldRatio == 0 {
+	if rc.OldRatio == 0 && rc.NewRatio != rc.OldRatio {
 		return true
 	}
-	pct := math.Abs(rc.NewRatio-rc.OldRatio) / math.Abs(rc.OldRatio) * 100
-	return pct >= minPct
+	ratioPct := math.Abs(rc.NewRatio-rc.OldRatio) / math.Abs(rc.OldRatio) * 100
+	if ratioPct >= minPct {
+		return true
+	}
+	if rc.NewComp == rc.OldComp {
+		return false
+	}
+	if rc.OldComp == 0 {
+		return true
+	}
+	compPct := math.Abs(rc.NewComp-rc.OldComp) / math.Abs(rc.OldComp) * 100
+	return compPct >= minPct
 }
 
 func (rc RateChange) AllowedByPolicy(p Policy) bool {
@@ -69,9 +81,9 @@ func (rc RateChange) AllowedByPolicy(p Policy) bool {
 	case "", "all":
 		return true
 	case "increase", "up":
-		return rc.NewRatio > rc.OldRatio
+		return rc.NewRatio > rc.OldRatio || rc.NewComp > rc.OldComp
 	case "decrease", "down":
-		return rc.NewRatio < rc.OldRatio
+		return rc.NewRatio < rc.OldRatio || rc.NewComp < rc.OldComp
 	default:
 		return true
 	}
@@ -99,19 +111,22 @@ func BuildBatchMessage(channel *storage.Channel, changes []RateChange) Message {
 	now := time.Now()
 	if len(changes) == 1 {
 		c := changes[0]
-		direction := directionLabel(c.OldRatio, c.NewRatio)
+		direction := changeDirectionLabel(c)
 		return Message{
 			Event:     storage.EventRateChanged,
 			ChannelID: channel.ID,
 			ModelName: c.GroupName,
 			Subject:   fmt.Sprintf("【倍率变动】%s · %s %s", channel.Name, c.GroupName, direction),
 			Body: fmt.Sprintf(
-				"上游渠道：%s\n分组名称：%s\n倍率变化：%s -> %s（%s）\n变化方向：%s\n采集时间：%s",
+				"上游渠道：%s\n分组名称：%s\n倍率变化：%s -> %s（%s）\n补全倍率：%s -> %s（%s）\n变化方向：%s\n采集时间：%s",
 				channel.Name,
 				c.GroupName,
 				formatRatio(c.OldRatio),
 				formatRatio(c.NewRatio),
 				formatChangePct(c.OldRatio, c.NewRatio),
+				formatRatio(c.OldComp),
+				formatRatio(c.NewComp),
+				formatChangePct(c.OldComp, c.NewComp),
 				direction,
 				now.Format("2006-01-02 15:04"),
 			),
@@ -122,12 +137,15 @@ func BuildBatchMessage(channel *storage.Channel, changes []RateChange) Message {
 	var b strings.Builder
 	fmt.Fprintf(&b, "上游渠道：%s\n共 %d 个分组倍率发生变化：\n", channel.Name, len(changes))
 	for _, c := range changes {
-		fmt.Fprintf(&b, "- %s：%s -> %s（%s，%s）\n",
+		fmt.Fprintf(&b, "- %s：倍率 %s -> %s（%s），补全 %s -> %s（%s，%s）\n",
 			c.GroupName,
 			formatRatio(c.OldRatio),
 			formatRatio(c.NewRatio),
 			formatChangePct(c.OldRatio, c.NewRatio),
-			directionLabel(c.OldRatio, c.NewRatio),
+			formatRatio(c.OldComp),
+			formatRatio(c.NewComp),
+			formatChangePct(c.OldComp, c.NewComp),
+			changeDirectionLabel(c),
 		)
 	}
 	fmt.Fprintf(&b, "采集时间：%s", now.Format("2006-01-02 15:04"))
@@ -151,6 +169,21 @@ func directionLabel(oldV, newV float64) string {
 	default:
 		return "调整"
 	}
+}
+
+func changeDirectionLabel(c RateChange) string {
+	ratioDir := directionLabel(c.OldRatio, c.NewRatio)
+	compDir := directionLabel(c.OldComp, c.NewComp)
+	if ratioDir == compDir {
+		return ratioDir
+	}
+	if ratioDir == "调整" {
+		return compDir
+	}
+	if compDir == "调整" {
+		return ratioDir
+	}
+	return "调整"
 }
 
 func formatRatio(v float64) string {

@@ -102,6 +102,7 @@ func main() {
 		RateChangeDirection: cfg.Notifications.RateChangeDirection,
 		QuietGroups:         cfg.Notifications.RateChangeQuietGroups,
 		BalanceLowCooldown:  time.Duration(cfg.Notifications.BalanceLowCooldownMinutes) * time.Minute,
+		FailureCooldown:     time.Duration(cfg.Notifications.FailureCooldownMinutes) * time.Minute,
 		SendMaxAttempts:     cfg.Notifications.SendMaxAttempts,
 	})
 	monitorSvc := monitor.NewService(channels, rates, monLogs, channelSvc, dispatcher, log)

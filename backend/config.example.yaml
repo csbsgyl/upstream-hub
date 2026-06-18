@@ -55,6 +55,8 @@ notifications:
   # 同一上游的 balance_low 在 N 分钟内只发一次。0 = 每次扫描发现 < 阈值都发。
   # 状态持久化在 notification_cooldowns 表，跨重启依然生效。
   balanceLowCooldownMinutes: 60
+  # 同一上游的登录/采集失败在 N 分钟内只发一次，避免余额和倍率同时失败时连发两条。
+  failureCooldownMinutes: 10
   # 单条通知发送失败时最多重试次数（含首次）。1 = 不重试。
   # 退避：1s / 2s / 4s … 上限 30s。
   sendMaxAttempts: 3

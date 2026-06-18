@@ -104,3 +104,88 @@ func TestDispatchSuppressesBalanceCooldown(t *testing.T) {
 		t.Fatalf("cooldown resets = %d, want 0", cooldown.resets)
 	}
 }
+
+func TestDispatchSuppressesDuplicateLoginFailure(t *testing.T) {
+	cooldown := &cooldownStub{claimOK: false}
+	d := NewDispatcherWithCooldown(nil, nil, nil, Policy{
+		FailureCooldown: time.Minute,
+		SendMaxAttempts: 1,
+	}, cooldown)
+	called := false
+	d.fanoutFunc = func(context.Context, Message, func(*storage.NotificationChannel) bool) fanoutResult {
+		called = true
+		return fanoutResult{}
+	}
+
+	err := d.Dispatch(context.Background(), Message{
+		Event:     storage.EventLoginFailed,
+		ChannelID: 11,
+		Subject:   "login failed",
+	})
+
+	if err != nil {
+		t.Fatalf("Dispatch error = %v, want nil", err)
+	}
+	if called {
+		t.Fatal("fanout was called while failure cooldown should suppress send")
+	}
+	if cooldown.claims != 1 {
+		t.Fatalf("cooldown claims = %d, want 1", cooldown.claims)
+	}
+}
+
+func TestDispatchDoesNotSuppressRateChangesWithFailureCooldown(t *testing.T) {
+	cooldown := &cooldownStub{claimOK: false}
+	d := NewDispatcherWithCooldown(nil, nil, nil, Policy{
+		FailureCooldown: time.Minute,
+		SendMaxAttempts: 1,
+	}, cooldown)
+	called := false
+	d.fanoutFunc = func(context.Context, Message, func(*storage.NotificationChannel) bool) fanoutResult {
+		called = true
+		return fanoutResult{succeeded: 1}
+	}
+
+	err := d.Dispatch(context.Background(), Message{
+		Event:     storage.EventRateChanged,
+		ChannelID: 11,
+		Subject:   "rate changed",
+	})
+
+	if err != nil {
+		t.Fatalf("Dispatch error = %v, want nil", err)
+	}
+	if !called {
+		t.Fatal("fanout was not called for rate_changed")
+	}
+	if cooldown.claims != 0 {
+		t.Fatalf("cooldown claims = %d, want 0", cooldown.claims)
+	}
+}
+
+func TestDispatchResetsFailureCooldownWhenUndelivered(t *testing.T) {
+	cooldown := &cooldownStub{claimOK: true}
+	d := NewDispatcherWithCooldown(nil, nil, nil, Policy{
+		FailureCooldown: time.Minute,
+		SendMaxAttempts: 1,
+	}, cooldown)
+	d.fanoutFunc = func(context.Context, Message, func(*storage.NotificationChannel) bool) fanoutResult {
+		return fanoutResult{attempted: 1, succeeded: 0, err: errors.New("send failed")}
+	}
+
+	err := d.Dispatch(context.Background(), Message{
+		Event:     storage.EventLoginFailed,
+		ChannelID: 11,
+		Subject:   "login failed",
+	})
+
+	if err == nil {
+		t.Fatal("Dispatch returned nil, want send error")
+	}
+	if cooldown.claims != 1 {
+		t.Fatalf("cooldown claims = %d, want 1", cooldown.claims)
+	}
+	if cooldown.resets != 1 {
+		t.Fatalf("cooldown resets = %d, want 1", cooldown.resets)
+	}
+}

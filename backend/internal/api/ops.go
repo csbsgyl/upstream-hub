@@ -135,6 +135,7 @@ func buildOpsStatus(d *Deps) (*opsStatusResponse, error) {
 			"rate_change_direction":        d.Config.Notifications.RateChangeDirection,
 			"rate_change_quiet_groups":     d.Config.Notifications.RateChangeQuietGroups,
 			"balance_low_cooldown_minutes": d.Config.Notifications.BalanceLowCooldownMinutes,
+			"failure_cooldown_minutes":     d.Config.Notifications.FailureCooldownMinutes,
 			"send_max_attempts":            d.Config.Notifications.SendMaxAttempts,
 			"failed_notification_logs":     notifyFailed,
 		},

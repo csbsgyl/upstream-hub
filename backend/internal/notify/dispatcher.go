@@ -78,6 +78,10 @@ func (d *Dispatcher) Resend(ctx context.Context, ch *storage.NotificationChannel
 // 去抖：balance_low 同渠道在 BalanceLowCooldown 内不重复推送，状态在 PostgreSQL 里持久化。
 // 失败：按 SendMaxAttempts 进行指数退避重试。
 func (d *Dispatcher) Dispatch(ctx context.Context, msg Message) error {
+	failureCooldownClaimed, suppressed := d.suppressFailure(msg)
+	if suppressed {
+		return nil
+	}
 	if d.suppress(msg) {
 		return nil
 	}
@@ -91,7 +95,50 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg Message) error {
 			)
 		}
 	}
+	if result.succeeded == 0 && failureCooldownClaimed && d.cooldown != nil {
+		if resetErr := d.cooldown.ResetCooldown(msg.ChannelID, failureCooldownKey(msg.Event)); resetErr != nil && d.log != nil {
+			d.log.Warn("reset failure cooldown after undelivered alert",
+				"channel_id", msg.ChannelID,
+				"event", msg.Event,
+				"attempted", result.attempted,
+				"err", resetErr,
+			)
+		}
+	}
 	return result.err
+}
+
+// suppressFailure 判断登录 / 采集失败是否要按 cooldown 跳过本次发送。
+// 这样一次同步里如果余额和倍率都失败，只会冒出第一条。
+func (d *Dispatcher) suppressFailure(msg Message) (claimed bool, suppressed bool) {
+	if msg.ChannelID == 0 {
+		return false, false
+	}
+	if d.policy.FailureCooldown <= 0 {
+		return false, false
+	}
+	if d.cooldown == nil {
+		return false, false
+	}
+	if !isFailureEvent(msg.Event) {
+		return false, false
+	}
+	ok, err := d.cooldown.TryClaimCooldown(msg.ChannelID, failureCooldownKey(msg.Event), d.policy.FailureCooldown)
+	if err != nil {
+		if d.log != nil {
+			d.log.Warn("failure cooldown lookup failed, sending anyway",
+				"err", err, "channel_id", msg.ChannelID, "event", msg.Event)
+		}
+		return false, false
+	}
+	if !ok && d.log != nil {
+		d.log.Debug("notification suppressed by failure cooldown",
+			"event", msg.Event,
+			"channel_id", msg.ChannelID,
+			"cooldown", d.policy.FailureCooldown,
+		)
+	}
+	return ok, !ok
 }
 
 // DispatchRateBatch 把一次扫描收集到的多条 RateChange 按 Policy 合并 / 过滤后推送。
@@ -211,6 +258,28 @@ func (d *Dispatcher) suppress(msg Message) bool {
 		)
 	}
 	return !ok
+}
+
+func isFailureEvent(event storage.NotificationEvent) bool {
+	switch event {
+	case storage.EventLoginFailed, storage.EventCaptchaFailed, storage.EventMonitorFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func failureCooldownKey(event storage.NotificationEvent) storage.NotificationEvent {
+	switch event {
+	case storage.EventLoginFailed:
+		return storage.NotificationEvent("failure_login")
+	case storage.EventCaptchaFailed:
+		return storage.NotificationEvent("failure_captcha")
+	case storage.EventMonitorFailed:
+		return storage.NotificationEvent("failure_monitor")
+	default:
+		return event
+	}
 }
 
 // fanout 广播给所有启用的通知渠道（仅给 Dispatch 用，DispatchRateBatch 自己控订阅切片）。

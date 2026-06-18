@@ -102,6 +102,8 @@ type RetentionConfig struct {
 //   - BalanceLowCooldownMinutes：同一渠道的 balance_low 在 X 分钟内不重复推送。
 //     0 = 不冷却（每次扫描发现仍 < 阈值都发）。冷却状态持久化在 PostgreSQL 的
 //     notification_cooldowns 表，跨重启生效。
+//   - FailureCooldownMinutes：同一渠道的登录/采集失败在 X 分钟内不重复推送。
+//     主要避免一次同步里余额和倍率都登录失败时连续刷两条相同通知。
 //   - SendMaxAttempts：单条通知发送失败时最多尝试次数（含首次）。
 //     1 = 不重试。重试采用指数退避：1s / 2s / 4s …，上限 30s。
 type NotificationsConfig struct {
@@ -110,6 +112,7 @@ type NotificationsConfig struct {
 	RateChangeDirection       string   `mapstructure:"rateChangeDirection"`
 	RateChangeQuietGroups     []string `mapstructure:"rateChangeQuietGroups"`
 	BalanceLowCooldownMinutes int      `mapstructure:"balanceLowCooldownMinutes"`
+	FailureCooldownMinutes    int      `mapstructure:"failureCooldownMinutes"`
 	SendMaxAttempts           int      `mapstructure:"sendMaxAttempts"`
 }
 
@@ -164,6 +167,7 @@ func Load(path string) (*Config, error) {
 	_ = v.BindEnv("notifications.rateChangeDirection", "UPSTREAMHUB_NOTIFICATIONS_RATE_CHANGE_DIRECTION")
 	_ = v.BindEnv("notifications.rateChangeQuietGroups", "UPSTREAMHUB_NOTIFICATIONS_RATE_CHANGE_QUIET_GROUPS")
 	_ = v.BindEnv("notifications.balanceLowCooldownMinutes", "UPSTREAMHUB_NOTIFICATIONS_BALANCE_LOW_COOLDOWN_MINUTES")
+	_ = v.BindEnv("notifications.failureCooldownMinutes", "UPSTREAMHUB_NOTIFICATIONS_FAILURE_COOLDOWN_MINUTES")
 	_ = v.BindEnv("notifications.sendMaxAttempts", "UPSTREAMHUB_NOTIFICATIONS_SEND_MAX_ATTEMPTS")
 
 	if err := v.ReadInConfig(); err != nil {
@@ -245,6 +249,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("notifications.rateChangeDirection", "all")
 	v.SetDefault("notifications.rateChangeQuietGroups", []string{})
 	v.SetDefault("notifications.balanceLowCooldownMinutes", 60)
+	v.SetDefault("notifications.failureCooldownMinutes", 10)
 	v.SetDefault("notifications.sendMaxAttempts", 3)
 
 	v.SetDefault("log.level", "info")
