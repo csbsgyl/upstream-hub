@@ -106,6 +106,9 @@ export function BalanceOverview() {
   const channels = summary.data?.channels ?? []
   const yMax = data.length > 0 ? niceCeil(Math.max(...data.map((d) => d.balance))) : 10
   const showDots = data.length <= 40
+  const latestPoint = data.at(-1)
+  const highestPoint = data.length > 0 ? data.reduce((max, d) => (d.balance > max.balance ? d : max), data[0]) : null
+  const lowestPoint = data.length > 0 ? data.reduce((min, d) => (d.balance < min.balance ? d : min), data[0]) : null
 
   return (
     <Card className="border border-border shadow-none lg:h-100">
@@ -133,7 +136,27 @@ export function BalanceOverview() {
         </ToggleGroup>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 w-full flex-1">
+        {data.length > 0 ? (
+          <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground">当前</p>
+              <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">{money(latestPoint?.balance)}</p>
+            </div>
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground">最高</p>
+              <p className="mt-1 text-sm font-semibold tabular-nums text-success">{money(highestPoint?.balance)}</p>
+            </div>
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground">最低</p>
+              <p className="mt-1 text-sm font-semibold tabular-nums text-warning">{money(lowestPoint?.balance)}</p>
+            </div>
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+              <p className="text-[11px] text-muted-foreground">采样点</p>
+              <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">{data.length}</p>
+            </div>
+          </div>
+        ) : null}
+        <div className="h-56 min-h-56 w-full lg:min-h-0 lg:flex-1">
           {trend.loading ? (
             <div className="flex h-full items-center justify-center text-xs text-muted-foreground">{"加载中…"}</div>
           ) : data.length === 0 ? (

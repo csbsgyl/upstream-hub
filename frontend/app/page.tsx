@@ -1,4 +1,5 @@
 import { KpiRow } from "@/components/monitor/kpi-row"
+import { HealthActionPanel } from "@/components/monitor/health-action-panel"
 import { BalanceOverview } from "@/components/monitor/balance-overview"
 import { MultiplierChanges } from "@/components/monitor/multiplier-changes"
 import { ChannelCards } from "@/components/monitor/channel-cards"
@@ -8,6 +9,7 @@ export default function Page() {
   return (
     <>
       <KpiRow />
+      <HealthActionPanel />
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
         <div className="lg:col-span-3">

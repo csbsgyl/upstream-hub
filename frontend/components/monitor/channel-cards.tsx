@@ -3,8 +3,11 @@
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
+  AlertTriangle,
   CheckCircle2,
   ChevronDown,
+  CircleDollarSign,
+  Clock3,
   Loader2,
   LogIn,
   Pause,
@@ -46,6 +49,42 @@ const statusMap: Record<Status, { label: string; cls: string }> = {
   low: { label: "低余额", cls: "text-warning bg-warning/10" },
   failed: { label: "登录失败", cls: "text-danger bg-danger/10" },
   idle: { label: "尚未采集", cls: "text-muted-foreground bg-muted/40" },
+}
+
+function StatusNotice({ channel, status }: { channel: Channel; status: Status }) {
+  if (!channel.monitor_enabled) {
+    return (
+      <div className="mt-3 flex items-start gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        <Pause className="mt-0.5 size-3.5 shrink-0" />
+        <span>监控已暂停，恢复后才会参与定时同步。</span>
+      </div>
+    )
+  }
+  if (status === "failed") {
+    return (
+      <div className="mt-3 flex items-start gap-2 rounded-md border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">
+        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+        <span>登录或采集失败，先点“测试登录”，通过后再同步。</span>
+      </div>
+    )
+  }
+  if (status === "low") {
+    return (
+      <div className="mt-3 flex items-start gap-2 rounded-md border border-warning/25 bg-warning/8 px-3 py-2 text-xs text-warning">
+        <CircleDollarSign className="mt-0.5 size-3.5 shrink-0" />
+        <span>余额低于阈值，请补充余额或调整告警阈值。</span>
+      </div>
+    )
+  }
+  if (status === "idle") {
+    return (
+      <div className="mt-3 flex items-start gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        <Clock3 className="mt-0.5 size-3.5 shrink-0" />
+        <span>还没有采集结果，可以先手动同步一次。</span>
+      </div>
+    )
+  }
+  return null
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -419,9 +458,17 @@ export function ChannelCards() {
             const status = statusOf(c)
             const meta = statusMap[status]
             return (
-              <Card key={c.id} className="flex flex-col gap-0 border border-border p-4 shadow-none">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground">{c.name}</span>
+              <Card
+                key={c.id}
+                id={`channel-${c.id}`}
+                className={cn(
+                  "flex flex-col gap-0 border border-border p-4 shadow-none transition-[box-shadow,border-color]",
+                  status === "failed" && "border-danger/30",
+                  status === "low" && "border-warning/30",
+                )}
+              >
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className="min-w-0 truncate text-sm font-semibold text-foreground">{c.name}</span>
                   <span
                     className={cn(
                       "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-inset",
@@ -471,11 +518,13 @@ export function ChannelCards() {
                   ) : null}
                 </div>
 
+                <StatusNotice channel={c} status={status} />
+
                 <InlineRates channelID={c.id} />
 
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   <Button
-                    variant="outline"
+                    variant={status === "idle" || status === "low" ? "default" : "outline"}
                     size="sm"
                     className="gap-1 text-xs"
                     disabled={!!syncState[c.id]?.running}
@@ -487,7 +536,7 @@ export function ChannelCards() {
                     {"同步"}
                   </Button>
                   <Button
-                    variant="outline"
+                    variant={status === "failed" ? "default" : "outline"}
                     size="sm"
                     className="gap-1 text-xs"
                     disabled={!!syncState[c.id]?.running}

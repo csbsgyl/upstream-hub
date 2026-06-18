@@ -5,6 +5,8 @@ import { toast } from "sonner"
 import {
   AlertTriangle,
   ArrowUpRight,
+  CheckCircle2,
+  CircleSlash,
   KeyRound,
   Pencil,
   Plus,
@@ -64,7 +66,24 @@ export function AlertFeed() {
                   <li key={a.id} className="flex items-center justify-between gap-3 px-6 py-3">
                     <div className="flex min-w-0 items-center gap-2.5">
                       <meta.icon className={cn("size-4 shrink-0", meta.cls)} />
-                      <span className="truncate text-sm text-foreground">{a.subject}</span>
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm text-foreground">{a.subject}</span>
+                          <span
+                            className={cn(
+                              "inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[10px] font-medium",
+                              a.success ? "bg-success/10 text-success" : "bg-danger/10 text-danger",
+                            )}
+                          >
+                            {a.success ? "成功" : "失败"}
+                          </span>
+                        </div>
+                        {!a.success && a.error_message ? (
+                          <p className="mt-0.5 truncate text-[11px] text-danger" title={a.error_message}>
+                            {a.error_message}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
                     <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(a.sent_at)}</span>
                   </li>
@@ -135,7 +154,22 @@ export function CaptchaStatus() {
         {loading ? (
           <p className="px-6 py-4 text-xs text-muted-foreground">{"加载中…"}</p>
         ) : !data || data.length === 0 ? (
-          <p className="px-6 py-4 text-xs text-muted-foreground">{"暂未配置打码 provider"}</p>
+          <div className="mx-6 mb-2 rounded-lg border border-dashed border-border px-4 py-5 text-center">
+            <CircleSlash className="mx-auto size-5 text-muted-foreground" />
+            <p className="mt-2 text-xs text-muted-foreground">{"暂未配置打码 provider"}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3 h-7 gap-1 text-xs"
+              onClick={() => {
+                setEditing(null)
+                setOpen(true)
+              }}
+            >
+              <Plus className="size-3" />
+              新增打码平台
+            </Button>
+          </div>
         ) : (
           <ul className="divide-y divide-border">
             {data.map((p) => (
@@ -153,14 +187,15 @@ export function CaptchaStatus() {
                   </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <span
-                    className={cn(
-                      "mr-1 text-xs",
-                      p.enabled ? "text-success" : "text-muted-foreground",
-                    )}
-                  >
-                    {p.enabled ? "已启用" : "已禁用"}
-                  </span>
+                    <span
+                      className={cn(
+                        "mr-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
+                        p.enabled ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {p.enabled ? <CheckCircle2 className="size-3" /> : null}
+                      {p.enabled ? "启用" : "禁用"}
+                    </span>
                   <Button
                     size="icon"
                     variant="ghost"
@@ -288,7 +323,22 @@ export function NotificationStatus() {
         {loading ? (
           <p className="text-xs text-muted-foreground">{"加载中…"}</p>
         ) : !data || data.length === 0 ? (
-          <p className="text-xs text-muted-foreground">{"暂未配置通知渠道"}</p>
+          <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center">
+            <CircleSlash className="mx-auto size-5 text-muted-foreground" />
+            <p className="mt-2 text-xs text-muted-foreground">{"暂未配置通知渠道"}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3 h-7 gap-1 text-xs"
+              onClick={() => {
+                setEditing(null)
+                setOpen(true)
+              }}
+            >
+              <Plus className="size-3" />
+              新增通知渠道
+            </Button>
+          </div>
         ) : (
           <ul className="divide-y divide-border rounded-lg border border-border">
             {data.map((c) => {

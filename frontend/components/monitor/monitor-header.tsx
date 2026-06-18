@@ -11,7 +11,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { useTriggerRefresh } from "@/lib/refresh-context"
-import { useChannels } from "@/lib/queries"
+import { useChannels, useVersionInfo } from "@/lib/queries"
 import { relativeTime } from "@/lib/format"
 
 export function MonitorHeader() {
@@ -19,8 +19,11 @@ export function MonitorHeader() {
   const { username, authDisabled, logout } = useAuth()
   const refresh = useTriggerRefresh()
   const channels = useChannels()
+  const version = useVersionInfo()
   const [mounted, setMounted] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const repoURL = version.data?.repo_url ?? "https://github.com/csbsgyl/upstream-hub"
+  const repoName = version.data?.repository ?? "csbsgyl/upstream-hub"
 
   useEffect(() => setMounted(true), [])
 
@@ -157,7 +160,7 @@ export function MonitorHeader() {
                 aria-label="GitHub 仓库"
               >
                 <a
-                  href="https://github.com/csbsgyl/upstream-hub"
+                  href={repoURL}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -166,7 +169,7 @@ export function MonitorHeader() {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              {"GitHub · csbsgyl/upstream-hub"}
+              {`GitHub · ${repoName}`}
             </TooltipContent>
           </Tooltip>
 

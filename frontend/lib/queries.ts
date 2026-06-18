@@ -15,6 +15,7 @@ import type {
   NotificationLog,
   RateChangeLog,
   RateSnapshot,
+  VersionInfo,
   VersionCheck,
 } from "@/lib/api-types"
 
@@ -163,6 +164,10 @@ export function useOpsStatus() {
 
 export function useVersionCheck() {
   return useApi<VersionCheck>("/version/check")
+}
+
+export function useVersionInfo() {
+  return useApi<VersionInfo>("/version")
 }
 
 export function useAuditLogs(limit = 100) {
