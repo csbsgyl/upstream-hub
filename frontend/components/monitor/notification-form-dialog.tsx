@@ -290,7 +290,7 @@ export function NotificationFormDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? "编辑通知渠道" : "新增通知渠道"}</DialogTitle>
           <DialogDescription>
-            订阅留空表示接收所有上游的所有事件（向后兼容）。配置好订阅后只会收到关心的事件。
+            通知渠道会接收余额告警、登录/采集失败和倍率变动。订阅留空表示接收所有上游；添加订阅后可按上游或分组筛选倍率变动。
           </DialogDescription>
         </DialogHeader>
 
@@ -359,7 +359,7 @@ export function NotificationFormDialog({
               <div>
                 <p className="text-sm font-medium">订阅规则</p>
                 <p className="text-[11px] text-muted-foreground">
-                  留空 = 收到所有上游的所有事件；添加规则后只收命中的
+                  按上游限制通知范围；选择“仅指定分组”时只推送这些分组的倍率变动。
                 </p>
               </div>
               <Button
@@ -377,7 +377,7 @@ export function NotificationFormDialog({
 
             {form.subs.length === 0 ? (
               <p className="rounded border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-                暂无订阅，所有事件都会收到
+                未添加订阅，所有上游的余额告警、失败告警和倍率变动都会推送。
               </p>
             ) : (
               <div className="space-y-2">
@@ -729,7 +729,7 @@ function SubRowEditor({ row, channels, onChange, onRemove, disabled }: SubRowEdi
             htmlFor={`mode-all-${row.channel_id ?? "x"}`}
             className="text-xs font-normal"
           >
-            全部事件 / 所有分组
+            该上游全部事件 / 所有倍率分组
           </Label>
         </div>
         <div className="flex items-center gap-1.5">
@@ -738,7 +738,7 @@ function SubRowEditor({ row, channels, onChange, onRemove, disabled }: SubRowEdi
             htmlFor={`mode-grp-${row.channel_id ?? "x"}`}
             className="text-xs font-normal"
           >
-            仅指定分组的倍率变化
+            仅指定分组的倍率变动
           </Label>
         </div>
       </RadioGroup>

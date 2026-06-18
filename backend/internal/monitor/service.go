@@ -194,7 +194,9 @@ func (s *Service) RefreshRates(ctx context.Context, c *storage.Channel) error {
 	}
 	// 一次扫描的所有变化打包推送：去抖策略（合并 / 涨跌幅过滤）由 Dispatcher.Policy 决定。
 	if len(changes) > 0 {
-		_ = s.dispatcher.DispatchRateBatch(ctx, c, changes)
+		if err := s.dispatcher.DispatchRateBatch(ctx, c, changes); err != nil && s.log != nil {
+			s.log.Warn("dispatch rate changes failed", "channel", c.Name, "err", err)
+		}
 	}
 	progress.OK(ctx, progress.StageRates, fmt.Sprintf("拉到 %d 个分组", len(results)),
 		map[string]any{"count": len(results)})

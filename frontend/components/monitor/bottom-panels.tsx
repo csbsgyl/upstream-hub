@@ -303,7 +303,7 @@ export function NotificationStatus() {
                       <p className="text-[11px] text-muted-foreground">
                         {c.type}
                         {" · "}
-                        {subCount === 0 ? "订阅全部" : `${subCount} 条订阅`}
+                        {subCount === 0 ? "接收全部事件" : `${subCount} 条订阅规则`}
                         {!c.enabled ? " · 已禁用" : ""}
                       </p>
                     </div>

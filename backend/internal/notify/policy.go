@@ -62,14 +62,20 @@ func BuildBatchMessage(channel *storage.Channel, changes []RateChange) Message {
 	now := time.Now()
 	if len(changes) == 1 {
 		c := changes[0]
+		direction := directionLabel(c.OldRatio, c.NewRatio)
 		return Message{
 			Event:     storage.EventRateChanged,
 			ChannelID: channel.ID,
 			ModelName: c.GroupName,
-			Subject:   fmt.Sprintf("【倍率变化提醒】%s · %s", channel.Name, c.GroupName),
+			Subject:   fmt.Sprintf("【倍率变动】%s · %s %s", channel.Name, c.GroupName, direction),
 			Body: fmt.Sprintf(
-				"渠道：%s\n分组倍率：%s 由 %g %s至 %g\n变化时间：%s",
-				channel.Name, c.GroupName, c.OldRatio, arrowFor(c.OldRatio, c.NewRatio), c.NewRatio,
+				"上游渠道：%s\n分组名称：%s\n倍率变化：%s -> %s（%s）\n变化方向：%s\n采集时间：%s",
+				channel.Name,
+				c.GroupName,
+				formatRatio(c.OldRatio),
+				formatRatio(c.NewRatio),
+				formatChangePct(c.OldRatio, c.NewRatio),
+				direction,
 				now.Format("2006-01-02 15:04"),
 			),
 		}
@@ -77,30 +83,47 @@ func BuildBatchMessage(channel *storage.Channel, changes []RateChange) Message {
 
 	// 合并多条：subject 简短，body 列出每条。
 	var b strings.Builder
-	fmt.Fprintf(&b, "渠道：%s\n共 %d 个分组倍率变化：\n", channel.Name, len(changes))
+	fmt.Fprintf(&b, "上游渠道：%s\n共 %d 个分组倍率发生变化：\n", channel.Name, len(changes))
 	for _, c := range changes {
-		fmt.Fprintf(&b, "  · %s：%g %s至 %g\n",
-			c.GroupName, c.OldRatio, arrowFor(c.OldRatio, c.NewRatio), c.NewRatio)
+		fmt.Fprintf(&b, "- %s：%s -> %s（%s，%s）\n",
+			c.GroupName,
+			formatRatio(c.OldRatio),
+			formatRatio(c.NewRatio),
+			formatChangePct(c.OldRatio, c.NewRatio),
+			directionLabel(c.OldRatio, c.NewRatio),
+		)
 	}
-	fmt.Fprintf(&b, "时间：%s", now.Format("2006-01-02 15:04"))
+	fmt.Fprintf(&b, "采集时间：%s", now.Format("2006-01-02 15:04"))
 
 	// ModelName 在合并消息里没有单一值；填空，订阅过滤改在 Dispatcher 里按"先按订阅切片再合并"处理。
 	return Message{
 		Event:     storage.EventRateChanged,
 		ChannelID: channel.ID,
 		ModelName: "",
-		Subject:   fmt.Sprintf("【倍率变化提醒】%s · %d 个分组变动", channel.Name, len(changes)),
+		Subject:   fmt.Sprintf("【倍率变动】%s · %d 个分组变化", channel.Name, len(changes)),
 		Body:      b.String(),
 	}
 }
 
-func arrowFor(oldV, newV float64) string {
+func directionLabel(oldV, newV float64) string {
 	switch {
 	case newV > oldV:
-		return "上涨"
+		return "上调"
 	case newV < oldV:
 		return "下调"
 	default:
 		return "调整"
 	}
+}
+
+func formatRatio(v float64) string {
+	return fmt.Sprintf("%.4g", v)
+}
+
+func formatChangePct(oldV, newV float64) string {
+	if oldV == 0 {
+		return "新倍率"
+	}
+	pct := (newV - oldV) / math.Abs(oldV) * 100
+	return fmt.Sprintf("%+.1f%%", pct)
 }
