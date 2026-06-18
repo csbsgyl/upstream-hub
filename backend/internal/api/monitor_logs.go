@@ -18,7 +18,7 @@ func registerMonitorLogs(g *gin.RouterGroup, d *Deps) {
 			}
 			channelID = uint(id)
 		}
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+		limit := queryIntClamped(c, "limit", 100, 1, 500)
 		list, err := d.MonLogs.List(channelID, limit)
 		if err != nil {
 			fail(c, http.StatusInternalServerError, err)

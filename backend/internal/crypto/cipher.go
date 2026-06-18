@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"strings"
 )
 
 // Cipher 对敏感字段做对称加密。主密钥通过 APP_SECRET 环境变量配置，长度任意，
@@ -17,8 +18,12 @@ type Cipher struct {
 }
 
 func NewCipher(key string) (*Cipher, error) {
+	key = strings.TrimSpace(key)
 	if key == "" {
 		return nil, errors.New("APP_SECRET is empty")
+	}
+	if isPlaceholderSecret(key) {
+		return nil, errors.New("APP_SECRET is still using a public placeholder; generate a random secret before deployment")
 	}
 	sum := sha256.Sum256([]byte(key))
 	block, err := aes.NewCipher(sum[:])
@@ -30,6 +35,17 @@ func NewCipher(key string) (*Cipher, error) {
 		return nil, err
 	}
 	return &Cipher{aead: aead}, nil
+}
+
+func isPlaceholderSecret(key string) bool {
+	switch key {
+	case "change-me",
+		"please-change-me-to-a-long-random-secret",
+		"please-change-me-to-a-long-random-secret-32bytes-min":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *Cipher) Encrypt(plain string) (string, error) {

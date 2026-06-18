@@ -39,13 +39,12 @@ func (t *telegram) Type() storage.NotificationChannelType { return storage.Notif
 
 func (t *telegram) Send(ctx context.Context, msg Message) error {
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", t.cfg.BotToken)
-	text := fmt.Sprintf("*%s*\n%s", msg.Subject, msg.Body)
+	text := fmt.Sprintf("%s\n%s", msg.Subject, msg.Body)
 	resp, err := t.http.R().
 		SetContext(ctx).
 		SetBody(map[string]any{
-			"chat_id":    t.cfg.ChatID,
-			"text":       text,
-			"parse_mode": "Markdown",
+			"chat_id": t.cfg.ChatID,
+			"text":    text,
 		}).
 		Post(url)
 	if err != nil {

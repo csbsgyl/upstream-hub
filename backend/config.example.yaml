@@ -17,8 +17,8 @@ database:
 
 security:
   # 主密钥，用于加密渠道密码 / cookie / token / 打码 API key。
-  # 优先从 APP_SECRET 环境变量读取；这里只作开发期默认。
-  appSecret: "please-change-me-to-a-long-random-secret"
+  # 优先从 APP_SECRET 环境变量读取；部署前必须生成随机值。
+  appSecret: ""
 
 auth:
   # 鉴权总开关。true（默认）= 访问需要登录；false = 所有 /api/* 免登录、前端跳过登录页。

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/worryzyy/upstream-hub/internal/notify"
@@ -38,7 +38,7 @@ func registerNotifications(g *gin.RouterGroup, d *Deps) {
 	gpc.POST("/:id/test", func(c *gin.Context) { testNotify(c, d) })
 
 	g.GET("/notifications/logs", func(c *gin.Context) {
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+		limit := queryIntClamped(c, "limit", 100, 1, 500)
 		list, err := d.Notifies.ListLogs(limit)
 		if err != nil {
 			fail(c, http.StatusInternalServerError, err)
@@ -49,22 +49,53 @@ func registerNotifications(g *gin.RouterGroup, d *Deps) {
 }
 
 type notifyChannelInput struct {
-	Name          string                          `json:"name" binding:"required"`
-	Type          storage.NotificationChannelType `json:"type" binding:"required"`
+	Name          string                          `json:"name"`
+	Type          storage.NotificationChannelType `json:"type"`
 	Config        string                          `json:"config"` // JSON string；编辑时可留空保留原值
-	Subscriptions string                          `json:"subscriptions"`
-	Enabled       bool                            `json:"enabled"`
+	Subscriptions *string                         `json:"subscriptions"`
+	Enabled       *bool                           `json:"enabled"`
 }
 
 // normalizeSubscriptions 把输入的订阅 JSON 字符串规整为 "[]" 或合法 JSON 数组。
 // 解析失败返回错误以便 API 返回 400。
 func normalizeSubscriptions(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "null" {
 		return "[]", nil
 	}
 	var list []notify.Subscription
 	if err := json.Unmarshal([]byte(raw), &list); err != nil {
 		return "", err
+	}
+	for i := range list {
+		if list[i].ChannelID == 0 {
+			return "", errors.New("subscription channel_id is required")
+		}
+		switch list[i].Mode {
+		case "", notify.SubscriptionModeAll:
+			list[i].Mode = notify.SubscriptionModeAll
+			list[i].Groups = nil
+		case notify.SubscriptionModeGroups:
+			groups := make([]string, 0, len(list[i].Groups))
+			seen := map[string]struct{}{}
+			for _, group := range list[i].Groups {
+				group = strings.TrimSpace(group)
+				if group == "" {
+					continue
+				}
+				if _, ok := seen[group]; ok {
+					continue
+				}
+				seen[group] = struct{}{}
+				groups = append(groups, group)
+			}
+			if len(groups) == 0 {
+				return "", errors.New("groups subscription requires at least one group")
+			}
+			list[i].Groups = groups
+		default:
+			return "", errors.New("subscription mode must be all or groups")
+		}
 	}
 	out, err := json.Marshal(list)
 	if err != nil {
@@ -79,11 +110,28 @@ func createNotifyChannel(c *gin.Context, d *Deps) {
 		fail(c, http.StatusBadRequest, err)
 		return
 	}
+	in.Name = strings.TrimSpace(in.Name)
+	if in.Name == "" {
+		fail(c, http.StatusBadRequest, errors.New("name is required"))
+		return
+	}
+	if in.Type == "" {
+		fail(c, http.StatusBadRequest, errors.New("type is required"))
+		return
+	}
 	if in.Config == "" {
 		fail(c, http.StatusBadRequest, errors.New("config is required"))
 		return
 	}
-	subs, err := normalizeSubscriptions(in.Subscriptions)
+	if err := validateNotifyConfig(in.Type, in.Config); err != nil {
+		fail(c, http.StatusBadRequest, err)
+		return
+	}
+	rawSubs := ""
+	if in.Subscriptions != nil {
+		rawSubs = *in.Subscriptions
+	}
+	subs, err := normalizeSubscriptions(rawSubs)
 	if err != nil {
 		fail(c, http.StatusBadRequest, err)
 		return
@@ -93,12 +141,16 @@ func createNotifyChannel(c *gin.Context, d *Deps) {
 		fail(c, http.StatusInternalServerError, err)
 		return
 	}
+	enabled := true
+	if in.Enabled != nil {
+		enabled = *in.Enabled
+	}
 	ch := &storage.NotificationChannel{
 		Name:          in.Name,
 		Type:          in.Type,
 		ConfigCipher:  cipherCfg,
 		Subscriptions: subs,
-		Enabled:       in.Enabled,
+		Enabled:       enabled,
 	}
 	if err := d.Notifies.CreateChannel(ch); err != nil {
 		fail(c, http.StatusInternalServerError, err)
@@ -123,16 +175,29 @@ func updateNotifyChannel(c *gin.Context, d *Deps) {
 		fail(c, http.StatusBadRequest, err)
 		return
 	}
-	subs, err := normalizeSubscriptions(in.Subscriptions)
-	if err != nil {
-		fail(c, http.StatusBadRequest, err)
+	if strings.TrimSpace(in.Name) != "" {
+		ch.Name = strings.TrimSpace(in.Name)
+	}
+	if in.Type != "" && in.Type != ch.Type {
+		fail(c, http.StatusBadRequest, errors.New("notification type cannot be changed after creation"))
 		return
 	}
-	ch.Name = in.Name
-	ch.Type = in.Type
-	ch.Enabled = in.Enabled
-	ch.Subscriptions = subs
+	if in.Enabled != nil {
+		ch.Enabled = *in.Enabled
+	}
+	if in.Subscriptions != nil {
+		subs, err := normalizeSubscriptions(*in.Subscriptions)
+		if err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
+		ch.Subscriptions = subs
+	}
 	if in.Config != "" {
+		if err := validateNotifyConfig(ch.Type, in.Config); err != nil {
+			fail(c, http.StatusBadRequest, err)
+			return
+		}
 		cipherCfg, err := d.Cipher.Encrypt(in.Config)
 		if err != nil {
 			fail(c, http.StatusInternalServerError, err)
@@ -145,6 +210,11 @@ func updateNotifyChannel(c *gin.Context, d *Deps) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": ch})
+}
+
+func validateNotifyConfig(t storage.NotificationChannelType, raw string) error {
+	_, err := notify.Build(&storage.NotificationChannel{Type: t}, raw)
+	return err
 }
 
 func testNotify(c *gin.Context, d *Deps) {

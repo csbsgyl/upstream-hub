@@ -126,6 +126,11 @@ export function ChannelFormDialog({ open, onOpenChange, channel }: ChannelFormDi
     setError(null)
     setSubmitting(true)
     try {
+      const name = form.name.trim()
+      const siteURL = form.site_url.trim()
+      const username = form.username.trim()
+      if (!name) throw new Error("渠道名称不能为空")
+      if (!siteURL) throw new Error("站点地址不能为空")
       const threshold = Number(form.balance_threshold)
       if (!Number.isFinite(threshold) || threshold < 0) {
         throw new Error("余额阈值必须是非负数")
@@ -169,13 +174,14 @@ export function ChannelFormDialog({ open, onOpenChange, channel }: ChannelFormDi
       if (!isTokenMode) {
         if (!isEdit && !form.password) throw new Error("新建时必须填写密码")
         if (modeChanged && !form.password) throw new Error("切换到账号密码模式时必须填写密码")
+        if (!username) throw new Error("账号 / 邮箱不能为空")
       }
 
       if (isEdit) {
         const body: Record<string, unknown> = {
-          name: form.name,
-          site_url: form.site_url,
-          username: form.username,
+          name,
+          site_url: siteURL,
+          username,
           credential_mode: form.credential_mode,
           balance_threshold: threshold,
           monitor_enabled: form.monitor_enabled,
@@ -192,10 +198,10 @@ export function ChannelFormDialog({ open, onOpenChange, channel }: ChannelFormDi
         await apiFetch(`/channels`, {
           method: "POST",
           body: JSON.stringify({
-            name: form.name,
+            name,
             type: form.type,
-            site_url: form.site_url,
-            username: form.username,
+            site_url: siteURL,
+            username,
             credential_mode: form.credential_mode,
             password: isTokenMode ? "" : form.password,
             token_credential: isTokenMode ? tokenCredential : "",

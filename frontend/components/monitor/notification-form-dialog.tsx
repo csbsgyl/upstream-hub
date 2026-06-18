@@ -218,10 +218,16 @@ export function NotificationFormDialog({
     setError(null)
     setSubmitting(true)
     try {
+      const name = form.name.trim()
+      if (!name) throw new Error("通知渠道名称不能为空")
+
       // 校验订阅：未选上游的行禁止保存
       for (const s of form.subs) {
         if (s.channel_id == null) {
           throw new Error("订阅列表里有未选择的上游，请补全或删除")
+        }
+        if (s.mode === "groups" && s.groups.length === 0) {
+          throw new Error("选择指定分组订阅时，至少要勾选一个分组")
         }
       }
 
@@ -233,13 +239,21 @@ export function NotificationFormDialog({
           case "telegram":
             return !!(form.cfg.bot_token || form.cfg.chat_id)
           case "webhook":
-            return !!form.cfg.url
+            return !!(form.cfg.url || form.cfg.headers || form.cfg.method !== "POST")
           case "email":
-            return !!(form.cfg.host || form.cfg.from || form.cfg.to)
+            return !!(
+              form.cfg.host ||
+              form.cfg.port ||
+              form.cfg.username ||
+              form.cfg.password ||
+              form.cfg.from ||
+              form.cfg.to ||
+              form.cfg.use_tls
+            )
           case "serverchan":
             return !!form.cfg.sendkey
           default:
-            return !!form.cfg.webhook_url
+            return !!(form.cfg.webhook_url || form.cfg.secret)
         }
       })()
 
@@ -256,7 +270,7 @@ export function NotificationFormDialog({
       )
 
       const body: Record<string, unknown> = {
-        name: form.name,
+        name,
         type: form.type,
         enabled: form.enabled,
         subscriptions,

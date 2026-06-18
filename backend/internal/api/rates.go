@@ -18,7 +18,7 @@ func registerRates(g *gin.RouterGroup, d *Deps) {
 			}
 			channelID = uint(id)
 		}
-		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+		limit := queryIntClamped(c, "limit", 50, 1, 500)
 		list, err := d.Rates.ListChanges(channelID, limit)
 		if err != nil {
 			fail(c, http.StatusInternalServerError, err)

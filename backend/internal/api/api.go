@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -112,4 +113,18 @@ func registerFrontend(r *gin.Engine, dist fs.FS) {
 // fail 统一错误响应。
 func fail(c *gin.Context, status int, err error) {
 	c.JSON(status, gin.H{"error": err.Error()})
+}
+
+func queryIntClamped(c *gin.Context, name string, def, min, max int) int {
+	v, err := strconv.Atoi(c.DefaultQuery(name, strconv.Itoa(def)))
+	if err != nil {
+		return def
+	}
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
 }

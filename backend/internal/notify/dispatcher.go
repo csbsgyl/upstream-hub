@@ -18,6 +18,8 @@ type Dispatcher struct {
 	log      *slog.Logger
 	policy   Policy
 	cooldown CooldownStore
+
+	fanoutFunc func(context.Context, Message, func(*storage.NotificationChannel) bool) fanoutResult
 }
 
 // NewDispatcher 用 *storage.Notifications 作为 CooldownStore 的具体实现，
@@ -74,7 +76,17 @@ func (d *Dispatcher) Dispatch(ctx context.Context, msg Message) error {
 	if d.suppress(msg) {
 		return nil
 	}
-	return d.fanout(ctx, msg, nil)
+	result := d.fanout(ctx, msg, nil)
+	if result.succeeded == 0 && msg.Event == storage.EventBalanceLow && msg.ChannelID != 0 && d.policy.BalanceLowCooldown > 0 && d.cooldown != nil {
+		if resetErr := d.cooldown.ResetCooldown(msg.ChannelID, msg.Event); resetErr != nil && d.log != nil {
+			d.log.Warn("reset balance_low cooldown after undelivered alert",
+				"channel_id", msg.ChannelID,
+				"attempted", result.attempted,
+				"err", resetErr,
+			)
+		}
+	}
+	return result.err
 }
 
 // DispatchRateBatch 把一次扫描收集到的多条 RateChange 按 Policy 合并 / 过滤后推送。
@@ -109,7 +121,16 @@ func (d *Dispatcher) DispatchRateBatch(ctx context.Context, channel *storage.Cha
 	var errs []error
 	for i := range notifyChannels {
 		nch := notifyChannels[i]
-		subs, _ := ParseSubscriptions(nch.Subscriptions)
+		subs, err := ParseSubscriptions(nch.Subscriptions)
+		if err != nil {
+			if d.log != nil {
+				d.log.Warn("skip notification channel with invalid subscriptions",
+					"notification_channel", nch.Name,
+					"err", err,
+				)
+			}
+			continue
+		}
 
 		// 切出该通知渠道关心的 changes 子集。
 		matching := subsetForSubscriptions(channel.ID, filtered, subs)
@@ -166,6 +187,9 @@ func (d *Dispatcher) suppress(msg Message) bool {
 	if d.policy.BalanceLowCooldown <= 0 {
 		return false
 	}
+	if d.cooldown == nil {
+		return false
+	}
 	ok, err := d.cooldown.TryClaimCooldown(msg.ChannelID, msg.Event, d.policy.BalanceLowCooldown)
 	if err != nil {
 		if d.log != nil {
@@ -188,29 +212,52 @@ func (d *Dispatcher) suppress(msg Message) bool {
 //
 // extraFilter 可选：用于在 ParseSubscriptions / AnyMatch 之后做额外裁剪；
 // 当前没有调用方传入，保留参数位是为以后扩展。
-func (d *Dispatcher) fanout(ctx context.Context, msg Message, extraFilter func(*storage.NotificationChannel) bool) error {
+type fanoutResult struct {
+	attempted int
+	succeeded int
+	err       error
+}
+
+func (d *Dispatcher) fanout(ctx context.Context, msg Message, extraFilter func(*storage.NotificationChannel) bool) fanoutResult {
+	if d.fanoutFunc != nil {
+		return d.fanoutFunc(ctx, msg, extraFilter)
+	}
 	channels, err := d.repo.ListEnabledChannels()
 	if err != nil {
-		return err
+		return fanoutResult{err: err}
 	}
 	if len(channels) == 0 {
-		return nil
+		return fanoutResult{}
 	}
+	result := fanoutResult{}
 	var errs []error
 	for i := range channels {
 		ch := channels[i]
-		subs, _ := ParseSubscriptions(ch.Subscriptions)
+		subs, err := ParseSubscriptions(ch.Subscriptions)
+		if err != nil {
+			if d.log != nil {
+				d.log.Warn("skip notification channel with invalid subscriptions",
+					"notification_channel", ch.Name,
+					"err", err,
+				)
+			}
+			continue
+		}
 		if len(subs) > 0 && !AnyMatch(subs, msg) {
 			continue
 		}
 		if extraFilter != nil && !extraFilter(&ch) {
 			continue
 		}
+		result.attempted++
 		if err := d.sendOne(ctx, &ch, msg); err != nil {
 			errs = append(errs, err)
+		} else {
+			result.succeeded++
 		}
 	}
-	return errors.Join(errs...)
+	result.err = errors.Join(errs...)
+	return result
 }
 
 // sendOne 给单个通知渠道发送一条消息，包含"解密配置 → 构造 Notifier → 重试发送 → 写日志"。

@@ -2,9 +2,11 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -41,7 +43,7 @@ type channelInput struct {
 	TurnstileEnabled bool                   `json:"turnstile_enabled"`
 	CaptchaConfigID  *uint                  `json:"captcha_config_id"`
 	BalanceThreshold float64                `json:"balance_threshold"`
-	MonitorEnabled   bool                   `json:"monitor_enabled"`
+	MonitorEnabled   *bool                  `json:"monitor_enabled"`
 }
 
 type channelUpdateInput struct {
@@ -72,6 +74,15 @@ func createChannel(c *gin.Context, d *Deps) {
 		fail(c, http.StatusBadRequest, err)
 		return
 	}
+	in.Name = strings.TrimSpace(in.Name)
+	if err := validateChannelInput(in.Name, in.Type, in.BalanceThreshold, in.CaptchaConfigID, d); err != nil {
+		fail(c, http.StatusBadRequest, err)
+		return
+	}
+	monitorEnabled := true
+	if in.MonitorEnabled != nil {
+		monitorEnabled = *in.MonitorEnabled
+	}
 	created, err := d.ChannelSvc.Create(channel.CreateInput{
 		Name:             in.Name,
 		Type:             in.Type,
@@ -83,7 +94,7 @@ func createChannel(c *gin.Context, d *Deps) {
 		TurnstileEnabled: in.TurnstileEnabled,
 		CaptchaConfigID:  in.CaptchaConfigID,
 		BalanceThreshold: in.BalanceThreshold,
-		MonitorEnabled:   in.MonitorEnabled,
+		MonitorEnabled:   monitorEnabled,
 	})
 	if err != nil {
 		fail(c, http.StatusInternalServerError, err)
@@ -116,6 +127,24 @@ func updateChannel(c *gin.Context, d *Deps) {
 	if err := c.ShouldBindJSON(&in); err != nil {
 		fail(c, http.StatusBadRequest, err)
 		return
+	}
+	if in.Name != nil && strings.TrimSpace(*in.Name) == "" {
+		fail(c, http.StatusBadRequest, errors.New("name is required"))
+		return
+	}
+	if in.Name != nil {
+		name := strings.TrimSpace(*in.Name)
+		in.Name = &name
+	}
+	if in.BalanceThreshold != nil && *in.BalanceThreshold < 0 {
+		fail(c, http.StatusBadRequest, errors.New("balance_threshold must be non-negative"))
+		return
+	}
+	if in.CaptchaConfigID != nil {
+		if _, err := d.Captchas.FindByID(*in.CaptchaConfigID); err != nil {
+			fail(c, http.StatusBadRequest, errors.New("captcha_config_id does not exist"))
+			return
+		}
 	}
 	updated, err := d.ChannelSvc.Update(id, channel.UpdateInput{
 		Name:             in.Name,
@@ -236,7 +265,7 @@ func balanceHistory(c *gin.Context, d *Deps) {
 		fail(c, http.StatusBadRequest, err)
 		return
 	}
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+	limit := queryIntClamped(c, "limit", 100, 1, 500)
 	list, err := d.Rates.BalanceHistory(id, limit)
 	if err != nil {
 		fail(c, http.StatusInternalServerError, err)
@@ -248,6 +277,26 @@ func balanceHistory(c *gin.Context, d *Deps) {
 func uintParam(c *gin.Context, name string) (uint, error) {
 	id, err := strconv.ParseUint(c.Param(name), 10, 64)
 	return uint(id), err
+}
+
+func validateChannelInput(name string, t storage.ChannelType, threshold float64, captchaID *uint, d *Deps) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("name is required")
+	}
+	switch t {
+	case storage.ChannelTypeNewAPI, storage.ChannelTypeSub2API:
+	default:
+		return errors.New("channel type must be newapi or sub2api")
+	}
+	if threshold < 0 {
+		return errors.New("balance_threshold must be non-negative")
+	}
+	if captchaID != nil {
+		if _, err := d.Captchas.FindByID(*captchaID); err != nil {
+			return errors.New("captcha_config_id does not exist")
+		}
+	}
+	return nil
 }
 
 // setupSSE 给 ResponseWriter 设上 text/event-stream 头，返回一个就绪的 sseObserver。

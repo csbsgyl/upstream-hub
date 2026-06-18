@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -90,10 +89,7 @@ func dashboardSummary(c *gin.Context, d *Deps) {
 }
 
 func dashboardBalanceTrend(c *gin.Context, d *Deps) {
-	days, _ := strconv.Atoi(c.DefaultQuery("days", "7"))
-	if days <= 0 {
-		days = 7
-	}
+	days := queryIntClamped(c, "days", 7, 1, 90)
 	trend, err := d.Rates.AggregateBalanceTrend(days)
 	if err != nil {
 		fail(c, http.StatusInternalServerError, err)

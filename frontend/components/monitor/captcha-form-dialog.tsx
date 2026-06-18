@@ -68,15 +68,19 @@ export function CaptchaFormDialog({ open, onOpenChange, config }: CaptchaFormDia
     setError(null)
     setSubmitting(true)
     try {
+      const name = form.name.trim()
+      const apiKey = form.api_key.trim()
+      const endpoint = form.endpoint.trim()
+      if (!name) throw new Error("打码配置名称不能为空")
       const body: Record<string, unknown> = {
-        name: form.name,
+        name,
         type: form.type,
-        endpoint: form.endpoint,
+        endpoint,
         enabled: form.enabled,
       }
-      if (form.api_key) body.api_key = form.api_key
+      if (apiKey) body.api_key = apiKey
       if (isEdit) {
-        if (!form.api_key && !config!.id) {
+        if (!apiKey && !config!.id) {
           // shouldn't happen, defensive
           throw new Error("缺少 API Key")
         }
@@ -85,7 +89,7 @@ export function CaptchaFormDialog({ open, onOpenChange, config }: CaptchaFormDia
           body: JSON.stringify(body),
         })
       } else {
-        if (!form.api_key) {
+        if (!apiKey) {
           throw new Error("新建时必须填写 API Key")
         }
         await apiFetch(`/captcha-configs`, {
@@ -139,7 +143,7 @@ export function CaptchaFormDialog({ open, onOpenChange, config }: CaptchaFormDia
             <Select
               value={form.type}
               onValueChange={(v) => setForm({ ...form, type: v as CaptchaProviderType })}
-              disabled={submitting}
+              disabled={isEdit || submitting}
             >
               <SelectTrigger id="captcha-type" className="w-full">
                 <SelectValue />
