@@ -44,6 +44,7 @@ type BusyAction =
   | "scan-balances"
   | "scan-rates"
   | "copy-update"
+  | "version-check"
   | "update"
   | `download-${string}`
 
@@ -275,14 +276,31 @@ function ActionButton({
       type="button"
       variant={variant}
       size="sm"
-      className={cn("gap-1.5", className)}
-      disabled={disabled || active}
-      onClick={onClick}
+      className={cn(
+        "relative gap-1.5 overflow-hidden",
+        active &&
+          "pointer-events-none border-brand/30 bg-brand/10 text-brand shadow-[0_0_0_1px_rgba(59,130,246,0.14)]",
+        className,
+      )}
+      aria-busy={active}
+      aria-disabled={disabled || active}
+      disabled={disabled}
+      onClick={active ? undefined : onClick}
     >
+      {active ? (
+        <span
+          className="pointer-events-none absolute inset-y-0 left-0 w-1/2 bg-linear-to-r from-transparent via-brand/15 to-transparent"
+          style={{ animation: "upstream-update-sweep 1.1s ease-in-out infinite" }}
+        />
+      ) : null}
       {active ? <Loader2 className="size-3.5 animate-spin" /> : null}
-      {children}
+      <span className="relative inline-flex items-center gap-1.5">{children}</span>
     </Button>
   )
+}
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, ms))
 }
 
 export default function SettingsPage() {
@@ -326,6 +344,7 @@ export default function SettingsPage() {
   const autoUpdate = versionInfo?.auto_update
   const autoUpdateReady = Boolean(versionInfo?.has_update && autoUpdate?.available)
   const updateActive = busy === "update" || Boolean(lastUpdate)
+  const versionChecking = busy === "version-check" || (version.loading && !versionInfo)
 
   useEffect(() => {
     if (!version.loading && version.data && !version.data.has_update && lastUpdate) {
@@ -368,13 +387,27 @@ export default function SettingsPage() {
     refresh()
   }
 
-  async function runAction<T>(key: BusyAction, fn: () => Promise<T>) {
+  async function runAction<T>(key: BusyAction, fn: () => Promise<T>, minVisibleMs = 650) {
     setBusy(key)
+    const startedAt = Date.now()
     try {
       return await fn()
     } finally {
+      const remaining = minVisibleMs - (Date.now() - startedAt)
+      if (remaining > 0) await wait(remaining)
       setBusy(null)
     }
+  }
+
+  async function checkVersion() {
+    await runAction(
+      "version-check",
+      async () => {
+        version.refetch()
+        toast.success("已发起版本检查", { duration: 1600 })
+      },
+      900,
+    )
   }
 
   async function retryLog(id: number) {
@@ -539,13 +572,18 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <Card className="border border-border shadow-none">
+      <Card
+        className={cn(
+          "border border-border shadow-none transition-[border-color,box-shadow]",
+          versionChecking && "border-brand/30 shadow-[0_0_0_1px_rgba(59,130,246,0.12)]",
+        )}
+      >
         <CardContent className="p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">系统更新</p>
               <h2 className="mt-1 text-base font-semibold text-foreground">
-                {versionTitle}
+                {versionChecking ? "正在检查版本" : versionTitle}
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 {versionInfo
@@ -556,14 +594,16 @@ export default function SettingsPage() {
             <Badge
               className={cn(
                 "w-fit ring-1",
-                versionError
+                versionChecking
+                  ? "bg-brand/10 text-brand ring-brand/20"
+                  : versionError
                   ? "bg-danger/10 text-danger ring-danger/20"
                   : versionInfo?.has_update
                   ? "bg-warning/10 text-warning ring-warning/20"
                   : "bg-success/10 text-success ring-success/20",
               )}
             >
-              {versionBadge}
+              {versionChecking ? "检查中" : versionBadge}
             </Badge>
           </div>
 
@@ -628,17 +668,15 @@ export default function SettingsPage() {
               )}
               {busy === "update" ? "启动中" : lastUpdate ? "后台更新" : "立即更新"}
             </ActionButton>
-            <Button
-              type="button"
+            <ActionButton
+              busy={busy}
+              busyKey="version-check"
               variant="outline"
-              size="sm"
-              className="gap-1.5"
-              disabled={version.loading}
-              onClick={() => version.refetch()}
+              onClick={checkVersion}
             >
-              <RefreshCw className={cn("size-3.5", version.loading && "animate-spin")} />
-              重新检查
-            </Button>
+              {busy === "version-check" ? null : <RefreshCw className="size-3.5" />}
+              {busy === "version-check" ? "检查中" : "重新检查"}
+            </ActionButton>
             <ActionButton busy={busy} busyKey="copy-update" variant="outline" onClick={copyUpdateCommand}>
               <ClipboardCopy className="size-3.5" />
               复制备用命令
@@ -665,7 +703,20 @@ export default function SettingsPage() {
               )}
             </span>
           </div>
-          {versionInfo?.has_update && !autoUpdate?.available ? (
+          {versionChecking ? (
+            <div className="mt-2 overflow-hidden rounded-md border border-brand/20 bg-brand/5 px-3 py-2 text-xs text-brand">
+              <div className="flex items-center gap-2">
+                <Loader2 className="size-3.5 animate-spin" />
+                <span>正在联系 GitHub 并刷新版本状态...</span>
+              </div>
+              <div className="relative mt-2 h-1 overflow-hidden rounded-full bg-background ring-1 ring-border/70">
+                <div
+                  className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-linear-to-r from-transparent via-brand to-transparent"
+                  style={{ animation: "upstream-update-sweep 1.2s ease-in-out infinite" }}
+                />
+              </div>
+            </div>
+          ) : versionInfo?.has_update && !autoUpdate?.available ? (
             <p className="mt-2 rounded-md border border-danger/20 bg-danger/5 px-3 py-2 text-xs leading-relaxed text-danger">
               一键更新暂不可用：{autoUpdate?.reason || "当前部署环境缺少自动更新能力"}。先在服务器执行一次备用更新命令，升级后以后就可以直接点“立即更新”。
             </p>
