@@ -242,13 +242,7 @@ func (s *Service) refreshBalanceWithSession(ctx context.Context, c *storage.Chan
 		map[string]any{"balance": res.Balance})
 
 	if c.BalanceThreshold > 0 && res.Balance < c.BalanceThreshold {
-		body := fmt.Sprintf("当前余额: %.4f，阈值: %.4f", res.Balance, c.BalanceThreshold)
-		_ = s.dispatcher.Dispatch(ctx, notify.Message{
-			Event:     storage.EventBalanceLow,
-			ChannelID: c.ID,
-			Subject:   fmt.Sprintf("[upstream-hub] %s 余额低于阈值", c.Name),
-			Body:      body,
-		})
+		_ = s.dispatcher.Dispatch(ctx, notify.BuildBalanceLowMessage(c, res.Balance, c.BalanceThreshold, sampledAt))
 	}
 	return nil
 }
@@ -351,12 +345,7 @@ func (s *Service) prepare(ctx context.Context, c *storage.Channel) (*connector.C
 }
 
 func (s *Service) notifyError(ctx context.Context, c *storage.Channel, event storage.NotificationEvent, subject string, err error) {
-	_ = s.dispatcher.Dispatch(ctx, notify.Message{
-		Event:     event,
-		ChannelID: c.ID,
-		Subject:   fmt.Sprintf("[upstream-hub] %s %s", c.Name, subject),
-		Body:      err.Error(),
-	})
+	_ = s.dispatcher.Dispatch(ctx, notify.BuildFailureMessage(c, event, subject, err))
 }
 
 func errString(err error) string {

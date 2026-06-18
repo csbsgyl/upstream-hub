@@ -116,26 +116,32 @@ func BuildBatchMessage(channel *storage.Channel, changes []RateChange) Message {
 			Event:     storage.EventRateChanged,
 			ChannelID: channel.ID,
 			ModelName: c.GroupName,
-			Subject:   fmt.Sprintf("【倍率变动】%s · %s %s", channel.Name, c.GroupName, direction),
-			Body: fmt.Sprintf(
-				"上游渠道：%s\n分组名称：%s\n倍率变化：%s -> %s（%s）\n补全倍率：%s -> %s（%s）\n变化方向：%s\n采集时间：%s",
-				channel.Name,
-				c.GroupName,
-				formatRatio(c.OldRatio),
-				formatRatio(c.NewRatio),
-				formatChangePct(c.OldRatio, c.NewRatio),
-				formatRatio(c.OldComp),
-				formatRatio(c.NewComp),
-				formatChangePct(c.OldComp, c.NewComp),
-				direction,
-				now.Format("2006-01-02 15:04"),
+			Subject:   fmt.Sprintf("【%s】倍率变动 · %s", defaultAppName, channel.Name),
+			Body: joinNotifySections(
+				[]string{
+					"告警类型：倍率变动",
+					"影响上游：" + channel.Name,
+					"变动分组：" + c.GroupName,
+					fmt.Sprintf("倍率变化：%s -> %s（%s）", formatRatio(c.OldRatio), formatRatio(c.NewRatio), formatChangePct(c.OldRatio, c.NewRatio)),
+					fmt.Sprintf("补全倍率：%s -> %s（%s）", formatRatio(c.OldComp), formatRatio(c.NewComp), formatChangePct(c.OldComp, c.NewComp)),
+					"变化方向：" + direction,
+					"采集时间：" + formatNotifyTime(now),
+				},
+				[]string{
+					"处理建议：",
+					rateChangeAdvice(direction),
+				},
 			),
 		}
 	}
 
 	// 合并多条：subject 简短，body 列出每条。
 	var b strings.Builder
-	fmt.Fprintf(&b, "上游渠道：%s\n共 %d 个分组倍率发生变化：\n", channel.Name, len(changes))
+	fmt.Fprintf(&b, "告警类型：倍率变动\n")
+	fmt.Fprintf(&b, "影响上游：%s\n", channel.Name)
+	fmt.Fprintf(&b, "变动数量：%d 个分组\n", len(changes))
+	fmt.Fprintf(&b, "采集时间：%s\n\n", formatNotifyTime(now))
+	fmt.Fprintf(&b, "变动明细：\n")
 	for _, c := range changes {
 		fmt.Fprintf(&b, "- %s：倍率 %s -> %s（%s），补全 %s -> %s（%s，%s）\n",
 			c.GroupName,
@@ -148,15 +154,26 @@ func BuildBatchMessage(channel *storage.Channel, changes []RateChange) Message {
 			changeDirectionLabel(c),
 		)
 	}
-	fmt.Fprintf(&b, "采集时间：%s", now.Format("2006-01-02 15:04"))
+	fmt.Fprintf(&b, "\n处理建议：\n1. 重点核对上调分组是否会抬高成本\n2. 如变动不符合预期，建议暂停相关分组或调整下游定价")
 
 	// ModelName 在合并消息里没有单一值；填空，订阅过滤改在 Dispatcher 里按"先按订阅切片再合并"处理。
 	return Message{
 		Event:     storage.EventRateChanged,
 		ChannelID: channel.ID,
 		ModelName: "",
-		Subject:   fmt.Sprintf("【倍率变动】%s · %d 个分组变化", channel.Name, len(changes)),
+		Subject:   fmt.Sprintf("【%s】倍率变动 · %s（%d 个分组）", defaultAppName, channel.Name, len(changes)),
 		Body:      b.String(),
+	}
+}
+
+func rateChangeAdvice(direction string) string {
+	switch direction {
+	case "上调":
+		return "1. 建议核对该分组成本变化，必要时同步调整下游定价"
+	case "下调":
+		return "1. 成本下降后可评估是否更新售卖策略或保留利润空间"
+	default:
+		return "1. 建议核对倍率和补全倍率是否符合预期"
 	}
 }
 

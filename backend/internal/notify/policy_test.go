@@ -28,12 +28,12 @@ func TestBuildBatchMessageSingleRateChange(t *testing.T) {
 	if msg.ModelName != "gpt pro" {
 		t.Fatalf("model name = %q, want gpt pro", msg.ModelName)
 	}
-	for _, want := range []string{"【倍率变动】", "低价GPT", "gpt pro", "下调"} {
+	for _, want := range []string{"【upstream-hub】倍率变动", "低价GPT"} {
 		if !strings.Contains(msg.Subject, want) {
 			t.Fatalf("subject %q does not contain %q", msg.Subject, want)
 		}
 	}
-	for _, want := range []string{"上游渠道：低价GPT", "分组名称：gpt pro", "0.2 -> 0.15", "-25.0%", "0.3 -> 0.25", "-16.7%", "变化方向：下调"} {
+	for _, want := range []string{"告警类型：倍率变动", "影响上游：低价GPT", "变动分组：gpt pro", "0.2 -> 0.15", "-25.0%", "0.3 -> 0.25", "-16.7%", "变化方向：下调", "处理建议："} {
 		if !strings.Contains(msg.Body, want) {
 			t.Fatalf("body %q does not contain %q", msg.Body, want)
 		}
@@ -47,10 +47,10 @@ func TestBuildBatchMessageMultipleRateChanges(t *testing.T) {
 		{GroupName: "claude", OldRatio: 2.1, NewRatio: 1.8, OldComp: 2.0, NewComp: 1.7},
 	})
 
-	if !strings.Contains(msg.Subject, "2 个分组变化") {
+	if !strings.Contains(msg.Subject, "2 个分组") {
 		t.Fatalf("subject = %q, want merged count", msg.Subject)
 	}
-	for _, want := range []string{"codex pro：倍率 1 -> 1.2（+20.0%），补全 1 -> 1（+0.0%，上调）", "claude：倍率 2.1 -> 1.8（-14.3%），补全 2 -> 1.7（-15.0%，下调）"} {
+	for _, want := range []string{"告警类型：倍率变动", "影响上游：质量上游", "变动数量：2 个分组", "codex pro：倍率 1 -> 1.2（+20.0%），补全 1 -> 1（+0.0%，上调）", "claude：倍率 2.1 -> 1.8（-14.3%），补全 2 -> 1.7（-15.0%，下调）", "处理建议："} {
 		if !strings.Contains(msg.Body, want) {
 			t.Fatalf("body %q does not contain %q", msg.Body, want)
 		}

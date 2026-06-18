@@ -254,11 +254,7 @@ func testNotify(c *gin.Context, d *Deps) {
 		fail(c, http.StatusNotFound, err)
 		return
 	}
-	displayName := notify.DisplayName(ch)
-	msg := notify.Message{
-		Subject: "[" + displayName + "] 测试通知",
-		Body:    "这是一条来自 " + displayName + " 的测试消息。",
-	}
+	msg := notify.BuildTestMessage(ch)
 	if err := d.Dispatcher.Send(c.Request.Context(), ch, msg); err != nil {
 		audit(c, d, "notification_channel.test", "notification_channel", ch.ID, "tested notification channel "+ch.Name, gin.H{
 			"ok":    false,
