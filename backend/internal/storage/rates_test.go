@@ -17,8 +17,8 @@ func TestBalanceTrendSpecForRange(t *testing.T) {
 		{
 			raw:            "24h",
 			wantRange:      "24h",
-			wantSince:      time.Date(2026, 6, 17, 15, 40, 0, 0, now.Location()),
-			wantBucketExpr: "5 minutes",
+			wantSince:      time.Date(2026, 6, 17, 15, 42, 0, 0, now.Location()),
+			wantBucketExpr: "3 minutes",
 		},
 		{
 			raw:            "7d",

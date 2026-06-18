@@ -87,6 +87,8 @@ POSTGRES_PORT=54329
 UPSTREAMHUB_HTTP_PORT=8080
 UPSTREAMHUB_SERVER_MODE=release
 UPSTREAMHUB_LOG_LEVEL=info
+UPSTREAMHUB_SCHEDULER_SYNC_CRON="37 */3 * * * *"
+UPSTREAMHUB_SCHEDULER_CONCURRENCY=4
 APP_SECRET=${APP_SECRET_VAL}
 AUTH_ENABLED=true
 EOF
@@ -124,6 +126,26 @@ ensure_env_kv "UPSTREAMHUB_UPDATE_ENABLED" "true"
 set_env_kv "UPSTREAMHUB_UPDATE_HOST_DIR" "${ROOT_DIR}"
 ensure_env_kv "UPSTREAMHUB_UPDATE_IMAGE" "upstream-hub:local"
 ensure_env_kv "UPSTREAMHUB_DEPLOY_BACKUP_INTERVAL_DAYS" "7"
+
+migrate_scheduler_defaults() {
+  local sync=""
+  if [[ -f .env ]]; then
+    sync="$(grep -E "^UPSTREAMHUB_SCHEDULER_SYNC_CRON=" .env 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+  fi
+  sync="${sync%\"}"
+  sync="${sync#\"}"
+  sync="${sync%\'}"
+  sync="${sync#\'}"
+  if [[ "${sync}" == "37 */5 * * * *" ]]; then
+    set_env_kv "UPSTREAMHUB_SCHEDULER_SYNC_CRON" "\"37 */3 * * * *\""
+    c_info "检测到旧版默认采集频率 5 分钟，已迁移为 3 分钟"
+  elif [[ -z "${sync}" ]]; then
+    ensure_env_kv "UPSTREAMHUB_SCHEDULER_SYNC_CRON" "\"37 */3 * * * *\""
+  fi
+  ensure_env_kv "UPSTREAMHUB_SCHEDULER_CONCURRENCY" "4"
+}
+
+migrate_scheduler_defaults
 
 env_value() {
   local key="$1"

@@ -137,8 +137,8 @@ func balanceTrendSpecForRange(raw string, now time.Time) (BalanceTrendSpec, bool
 	case "24h":
 		return BalanceTrendSpec{
 			Range:      "24h",
-			Since:      now.Add(-24 * time.Hour).Truncate(5 * time.Minute),
-			BucketExpr: "date_bin(interval '5 minutes', sampled_at, '2000-01-01 00:00:00+00'::timestamptz)",
+			Since:      now.Add(-24 * time.Hour).Truncate(3 * time.Minute),
+			BucketExpr: "date_bin(interval '3 minutes', sampled_at, '2000-01-01 00:00:00+00'::timestamptz)",
 		}, true
 	case "7d":
 		return BalanceTrendSpec{
@@ -164,7 +164,7 @@ func startOfDay(t time.Time) time.Time {
 
 // AggregateBalanceTrend 按时间范围聚合总余额趋势。
 //
-// 24h 使用 5 分钟桶对齐后台默认同步频率；7d 使用小时桶；30d 使用天桶。
+// 24h 使用 3 分钟桶对齐后台默认同步频率；7d 使用小时桶；30d 使用天桶。
 // 每个桶内先取单个渠道最后一次余额，再把所有渠道相加，避免同一渠道在同一桶内重复计入。
 func (r *Rates) AggregateBalanceTrend(spec BalanceTrendSpec) ([]BalanceTrendPoint, error) {
 	type row struct {

@@ -84,6 +84,11 @@ type SchedulerConfig struct {
 	Retention   RetentionConfig `mapstructure:"retention"`
 }
 
+const (
+	defaultSchedulerSyncCron       = "37 */3 * * * *"
+	legacyDefaultSchedulerSyncCron = "37 */5 * * * *"
+)
+
 // RetentionConfig 历史数据保留策略。
 //
 // 字段为 0 表示该表不清理，永久保留（默认 rate_change_logs 永远保留，是核心业务数据）。
@@ -168,6 +173,7 @@ func Load(path string) (*Config, error) {
 	_ = v.BindEnv("scheduler.syncCron", "UPSTREAMHUB_SCHEDULER_SYNC_CRON", "UPSTREAMHUB_SCHEDULER_SYNCCRON")
 	_ = v.BindEnv("scheduler.balanceCron", "UPSTREAMHUB_SCHEDULER_BALANCE_CRON", "UPSTREAMHUB_SCHEDULER_BALANCECRON")
 	_ = v.BindEnv("scheduler.rateCron", "UPSTREAMHUB_SCHEDULER_RATE_CRON", "UPSTREAMHUB_SCHEDULER_RATECRON")
+	_ = v.BindEnv("scheduler.concurrency", "UPSTREAMHUB_SCHEDULER_CONCURRENCY")
 	_ = v.BindEnv("notifications.batchRateChanges", "UPSTREAMHUB_NOTIFICATIONS_BATCH_RATE_CHANGES")
 	_ = v.BindEnv("notifications.minChangePct", "UPSTREAMHUB_NOTIFICATIONS_MIN_CHANGE_PCT")
 	_ = v.BindEnv("notifications.rateChangeDirection", "UPSTREAMHUB_NOTIFICATIONS_RATE_CHANGE_DIRECTION")
@@ -187,6 +193,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 	applySchedulerEnvOverrides(&cfg.Scheduler)
+	normalizeSchedulerConfig(&cfg.Scheduler)
 	normalizeNotificationsConfig(&cfg.Notifications)
 	return cfg, nil
 }
@@ -200,6 +207,14 @@ func applySchedulerEnvOverrides(cfg *SchedulerConfig) {
 	}
 	if value, ok := lookupAnyEnv("UPSTREAMHUB_SCHEDULER_RATE_CRON", "UPSTREAMHUB_SCHEDULER_RATECRON"); ok {
 		cfg.RateCron = value
+	}
+}
+
+func normalizeSchedulerConfig(cfg *SchedulerConfig) {
+	if strings.TrimSpace(cfg.SyncCron) == legacyDefaultSchedulerSyncCron &&
+		strings.TrimSpace(cfg.BalanceCron) == "" &&
+		strings.TrimSpace(cfg.RateCron) == "" {
+		cfg.SyncCron = defaultSchedulerSyncCron
 	}
 }
 
@@ -254,9 +269,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.maxOpenConns", 20)
 	v.SetDefault("database.maxIdleConns", 5)
 
-	// 默认每 5 分钟同一轮采集余额 + 倍率，减少两套 cron 分开跑造成的重复登录。
+	// 默认每 3 分钟同一轮采集余额 + 倍率，减少两套 cron 分开跑造成的重复登录。
 	// balanceCron/rateCron 保留给兼容和高级用户，默认关闭。
-	v.SetDefault("scheduler.syncCron", "37 */5 * * * *")
+	v.SetDefault("scheduler.syncCron", defaultSchedulerSyncCron)
 	v.SetDefault("scheduler.balanceCron", "")
 	v.SetDefault("scheduler.rateCron", "")
 	v.SetDefault("scheduler.concurrency", 4)

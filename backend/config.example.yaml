@@ -34,8 +34,8 @@ auth:
   sessionTTLHours: 168
 
 scheduler:
-  # 默认每 5 分钟同一轮同步余额 + 倍率，减少余额/倍率分开跑造成的重复登录。
-  syncCron: "37 */5 * * * *"
+  # 默认每 3 分钟同一轮同步余额 + 倍率，减少余额/倍率分开跑造成的重复登录。
+  syncCron: "37 */3 * * * *"
   # 兼容旧配置：需要分开采集时可清空 syncCron，再分别设置下面两项。
   balanceCron: ""
   rateCron:    ""

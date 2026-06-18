@@ -30,7 +30,7 @@ function niceCeil(n: number): number {
 }
 
 const RANGE_OPTIONS: Array<{ value: BalanceTrendRange; label: string; meta: string }> = [
-  { value: "24h", label: "24小时", meta: "5分钟采样" },
+  { value: "24h", label: "24小时", meta: "3分钟采样" },
   { value: "7d", label: "7天", meta: "小时聚合" },
   { value: "30d", label: "1个月", meta: "日聚合" },
 ]

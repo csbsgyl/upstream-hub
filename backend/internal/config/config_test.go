@@ -26,11 +26,37 @@ func TestDefaultSchedulerUsesUnifiedSync(t *testing.T) {
 	if err := v.Unmarshal(cfg); err != nil {
 		t.Fatalf("unmarshal defaults error = %v", err)
 	}
-	if cfg.Scheduler.SyncCron != "37 */5 * * * *" {
-		t.Fatalf("SyncCron default = %q, want 5 minute unified sync", cfg.Scheduler.SyncCron)
+	if cfg.Scheduler.SyncCron != defaultSchedulerSyncCron {
+		t.Fatalf("SyncCron default = %q, want 3 minute unified sync", cfg.Scheduler.SyncCron)
 	}
 	if cfg.Scheduler.BalanceCron != "" || cfg.Scheduler.RateCron != "" {
 		t.Fatalf("legacy cron defaults = balance %q rate %q, want both empty", cfg.Scheduler.BalanceCron, cfg.Scheduler.RateCron)
+	}
+}
+
+func TestLegacyDefaultSchedulerMigratesToThreeMinutes(t *testing.T) {
+	t.Setenv("UPSTREAMHUB_SCHEDULER_SYNC_CRON", legacyDefaultSchedulerSyncCron)
+	t.Setenv("UPSTREAMHUB_SCHEDULER_BALANCE_CRON", "")
+	t.Setenv("UPSTREAMHUB_SCHEDULER_RATE_CRON", "")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config error = %v", err)
+	}
+	if cfg.Scheduler.SyncCron != defaultSchedulerSyncCron {
+		t.Fatalf("SyncCron = %q, want migrated default %q", cfg.Scheduler.SyncCron, defaultSchedulerSyncCron)
+	}
+}
+
+func TestSchedulerConcurrencyEnvOverride(t *testing.T) {
+	t.Setenv("UPSTREAMHUB_SCHEDULER_CONCURRENCY", "2")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("load config error = %v", err)
+	}
+	if cfg.Scheduler.Concurrency != 2 {
+		t.Fatalf("Concurrency = %d, want env override 2", cfg.Scheduler.Concurrency)
 	}
 }
 
