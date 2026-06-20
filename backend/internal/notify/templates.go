@@ -50,21 +50,13 @@ func BuildBalanceLowMessage(channel *storage.Channel, balance, threshold float64
 	return Message{
 		Event:     storage.EventBalanceLow,
 		ChannelID: id,
-		Subject:   fmt.Sprintf("【%s】余额预警 · %s", defaultAppName, name),
-		Body: joinNotifySections(
-			[]string{
-				"告警类型：余额预警",
-				"影响上游：" + name,
-				fmt.Sprintf("当前余额：%.4f", balance),
-				fmt.Sprintf("告警阈值：%.4f", threshold),
-				"采集时间：" + formatNotifyTime(sampledAt),
-			},
-			[]string{
-				"处理建议：",
-				"1. 及时补充上游余额，避免用户请求失败",
-				"2. 如果阈值设置偏高，可在渠道配置中调整告警阈值",
-			},
-		),
+		Subject:   fmt.Sprintf("⚠️【%s】余额告警 · %s", defaultAppName, name),
+		Body: joinNotifySections([]string{
+			"🚨 余额低于阈值",
+			"上游：" + name,
+			fmt.Sprintf("余额：%.4f / 阈值 %.4f", balance, threshold),
+			"时间：" + formatNotifyTime(sampledAt),
+		}),
 	}
 }
 
@@ -78,20 +70,13 @@ func BuildFailureMessage(channel *storage.Channel, event storage.NotificationEve
 	return Message{
 		Event:     event,
 		ChannelID: id,
-		Subject:   fmt.Sprintf("【%s】%s · %s", defaultAppName, strings.TrimSpace(title), name),
-		Body: joinNotifySections(
-			[]string{
-				"告警类型：" + strings.TrimSpace(title),
-				"影响上游：" + name,
-				"失败原因：" + reason,
-				"发生时间：" + formatNotifyTime(time.Now()),
-			},
-			[]string{
-				"处理建议：",
-				"1. 检查账号状态、Token/Cookie 或上游后台权限",
-				"2. 确认服务器网络可访问该上游，再重新触发同步",
-			},
-		),
+		Subject:   fmt.Sprintf("🚫【%s】%s · %s", defaultAppName, strings.TrimSpace(title), name),
+		Body: joinNotifySections([]string{
+			"🚫 " + strings.TrimSpace(title),
+			"上游：" + name,
+			"原因：" + reason,
+			"时间：" + formatNotifyTime(time.Now()),
+		}),
 	}
 }
 

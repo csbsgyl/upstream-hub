@@ -58,3 +58,24 @@
 - frontend/app/settings-page.tsx: adds a return-home button beside the operations title.
 - progress.md: records this navigation fix.
 - Rollback: revert this change set or reset to the commit before this task.
+
+## 2026-06-20 - Task: Optimize alert notification copy
+### What was done
+- Balance, failure, and rate-change alerts now use clear icons and concise business-focused text.
+- Alert bodies now keep only the affected upstream, key values, and China-time timestamp.
+- Removed generic advice blocks from real alert notifications to reduce noisy pushes.
+
+### Testing
+- `git diff --check` passed.
+- `npm.cmd run lint` passed in `frontend`.
+- `npm.cmd run build` passed in `frontend`.
+- Backend Go tests and `gofmt` could not be run locally because `go` and `gofmt` are not installed or not available on this machine.
+
+### Notes
+- backend/internal/notify/templates.go: simplifies balance and failure alert subjects/bodies with icons and key fields only.
+- backend/internal/notify/policy.go: simplifies rate-change alert subjects/bodies, adds direction icons, and removes generic rate-change advice text.
+- backend/internal/notify/templates_test.go: updates balance/failure alert expectations and verifies noisy advice text is absent.
+- backend/internal/notify/policy_test.go: updates rate-change alert expectations and verifies noisy advice text is absent.
+- docs/monitoring.md: documents the concise alert notification format.
+- progress.md: records this alert-copy optimization and verification status.
+- Rollback: revert this change set or reset to the commit before this task.

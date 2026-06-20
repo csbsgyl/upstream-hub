@@ -30,9 +30,14 @@ func TestBuildBalanceLowMessageIncludesOperationalDetails(t *testing.T) {
 	if msg.ChannelID != channel.ID {
 		t.Fatalf("channel id = %d, want %d", msg.ChannelID, channel.ID)
 	}
-	for _, want := range []string{"【upstream-hub】余额预警 · 可达鸭", "当前余额：7.3249", "告警阈值：10.0000", "及时补充上游余额"} {
+	for _, want := range []string{"⚠️【upstream-hub】余额告警 · 可达鸭", "🚨 余额低于阈值", "上游：可达鸭", "余额：7.3249 / 阈值 10.0000"} {
 		if !strings.Contains(msg.Subject+"\n"+msg.Body, want) {
 			t.Fatalf("message %q\n%q does not contain %q", msg.Subject, msg.Body, want)
+		}
+	}
+	for _, unwanted := range []string{"处理建议", "及时补充上游余额"} {
+		if strings.Contains(msg.Body, unwanted) {
+			t.Fatalf("body %q should not contain %q", msg.Body, unwanted)
 		}
 	}
 }
@@ -47,9 +52,14 @@ func TestBuildFailureMessageRedactsSensitiveValues(t *testing.T) {
 	if strings.Contains(msg.Body, "ghp_secret") || strings.Contains(msg.Body, "abc.def.ghi") || strings.Contains(msg.Body, "sid=secret") {
 		t.Fatalf("body leaked sensitive value: %q", msg.Body)
 	}
-	for _, want := range []string{"告警类型：登录失败", "影响上游：质量上游", "[已隐藏]", "检查账号状态"} {
+	for _, want := range []string{"🚫 登录失败", "上游：质量上游", "[已隐藏]", "时间："} {
 		if !strings.Contains(msg.Body, want) {
 			t.Fatalf("body %q does not contain %q", msg.Body, want)
+		}
+	}
+	for _, unwanted := range []string{"处理建议", "检查账号状态"} {
+		if strings.Contains(msg.Body, unwanted) {
+			t.Fatalf("body %q should not contain %q", msg.Body, unwanted)
 		}
 	}
 }
