@@ -56,7 +56,11 @@ export function MonitorHeader() {
     <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur-sm">
       <div className="mx-auto flex h-14 max-w-360 items-center justify-between gap-4 px-5">
         {/* left: logo + title */}
-        <div className="flex min-w-0 items-center gap-3">
+        <Link
+          to="/"
+          className="flex min-w-0 items-center gap-3 rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          aria-label="返回首页"
+        >
           <div className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-950 shadow-sm ring-1 ring-border">
             <svg
               viewBox="0 0 32 32"
@@ -103,7 +107,7 @@ export function MonitorHeader() {
               {"Gateway Monitor"}
             </p>
           </div>
-        </div>
+        </Link>
 
         {/* right: actions */}
         <div className="flex items-center gap-3">

@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
+import { Link } from "react-router-dom"
 import {
   Activity,
+  ArrowLeft,
   AlertTriangle,
   BellRing,
   CheckCircle2,
@@ -680,11 +682,19 @@ export default function SettingsPage() {
   return (
     <section className="space-y-3">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">运维中心</h1>
-          <p className="text-xs text-muted-foreground">
-            备份、手动同步、失败补发、清理和诊断集中在这里处理。
-          </p>
+        <div className="flex min-w-0 items-start gap-3">
+          <Button asChild variant="outline" size="sm" className="h-8 gap-1.5">
+            <Link to="/">
+              <ArrowLeft className="size-3.5" />
+              返回首页
+            </Link>
+          </Button>
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold text-foreground">运维中心</h1>
+            <p className="text-xs text-muted-foreground">
+              备份、手动同步、失败补发、清理和诊断集中在这里处理。
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <ActionButton busy={busy} busyKey="backup" onClick={createBackup}>

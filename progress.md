@@ -42,3 +42,19 @@
 - docs/monitoring.md: documents live web update progress behavior.
 - progress.md: records this task and verification status.
 - Rollback: revert this change set or reset to the commit before this task.
+
+## 2026-06-20 - Task: Add settings return navigation
+### What was done
+- The top-left logo/title now links back to the dashboard homepage.
+- The settings page header now includes a visible return-home button.
+
+### Testing
+- `git diff --check` passed.
+- `npm.cmd run lint` passed in `frontend`.
+- `npm.cmd run build` passed in `frontend`.
+
+### Notes
+- frontend/components/monitor/monitor-header.tsx: makes the logo/title area a dashboard link.
+- frontend/app/settings-page.tsx: adds a return-home button beside the operations title.
+- progress.md: records this navigation fix.
+- Rollback: revert this change set or reset to the commit before this task.
