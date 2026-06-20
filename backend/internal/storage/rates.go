@@ -84,6 +84,39 @@ func (r *Rates) CountSnapshots() (int64, error) {
 	return n, err
 }
 
+func (r *Rates) DeleteRateSnapshotsNotIn(channelID uint, keepModelNames []string) (int64, error) {
+	var existing []RateSnapshot
+	if err := r.db.Select("model_name").Where("channel_id = ?", channelID).Find(&existing).Error; err != nil {
+		return 0, err
+	}
+	stale := staleRateSnapshotModelNames(existing, keepModelNames)
+	if len(stale) == 0 {
+		return 0, nil
+	}
+	res := r.db.Where("channel_id = ? AND model_name IN ?", channelID, stale).Delete(&RateSnapshot{})
+	return res.RowsAffected, res.Error
+}
+
+func staleRateSnapshotModelNames(existing []RateSnapshot, keepModelNames []string) []string {
+	keep := make(map[string]struct{}, len(keepModelNames))
+	for _, name := range keepModelNames {
+		keep[name] = struct{}{}
+	}
+	stale := make([]string, 0, len(existing))
+	seen := make(map[string]struct{}, len(existing))
+	for _, snapshot := range existing {
+		if _, ok := keep[snapshot.ModelName]; ok {
+			continue
+		}
+		if _, ok := seen[snapshot.ModelName]; ok {
+			continue
+		}
+		seen[snapshot.ModelName] = struct{}{}
+		stale = append(stale, snapshot.ModelName)
+	}
+	return stale
+}
+
 func (r *Rates) AppendBalance(s *BalanceSnapshot) error {
 	if s.SampledAt.IsZero() {
 		s.SampledAt = time.Now()

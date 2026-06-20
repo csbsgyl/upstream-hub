@@ -4,9 +4,15 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/worryzyy/upstream-hub/internal/storage"
+)
+
+var (
+	notifyLocationOnce sync.Once
+	notifyLocation     *time.Location
 )
 
 var sensitiveTextPatterns = []*regexp.Regexp{
@@ -121,7 +127,18 @@ func formatNotifyTime(t time.Time) string {
 	if t.IsZero() {
 		t = time.Now()
 	}
-	return t.Format("2006-01-02 15:04:05")
+	return t.In(chinaNotifyLocation()).Format("2006-01-02 15:04:05")
+}
+
+func chinaNotifyLocation() *time.Location {
+	notifyLocationOnce.Do(func() {
+		loc, err := time.LoadLocation("Asia/Shanghai")
+		if err != nil {
+			loc = time.FixedZone("Asia/Shanghai", 8*60*60)
+		}
+		notifyLocation = loc
+	})
+	return notifyLocation
 }
 
 func sanitizeNotifyText(s string) string {

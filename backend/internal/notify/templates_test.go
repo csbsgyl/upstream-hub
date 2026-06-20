@@ -53,3 +53,12 @@ func TestBuildFailureMessageRedactsSensitiveValues(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatNotifyTimeUsesChinaTime(t *testing.T) {
+	utc := time.Date(2026, 6, 19, 1, 2, 3, 0, time.UTC)
+	got := formatNotifyTime(utc)
+	want := "2026-06-19 09:02:03"
+	if got != want {
+		t.Fatalf("formatNotifyTime() = %q, want %q", got, want)
+	}
+}

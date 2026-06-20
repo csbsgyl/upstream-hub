@@ -56,3 +56,16 @@ func TestBalanceTrendSpecForRangeRejectsUnknownRange(t *testing.T) {
 		t.Fatal("balanceTrendSpecForRange accepted unknown range")
 	}
 }
+
+func TestStaleRateSnapshotModelNames(t *testing.T) {
+	existing := []RateSnapshot{
+		{ModelName: "default"},
+		{ModelName: "vip"},
+		{ModelName: "removed"},
+		{ModelName: "removed"},
+	}
+	got := staleRateSnapshotModelNames(existing, []string{"default", "vip"})
+	if strings.Join(got, ",") != "removed" {
+		t.Fatalf("staleRateSnapshotModelNames() = %#v, want [removed]", got)
+	}
+}

@@ -277,8 +277,10 @@ func (s *Service) refreshRatesWithSession(ctx context.Context, c *storage.Channe
 	}
 
 	now := time.Now()
+	keepModelNames := make([]string, 0, len(results))
 	changes := make([]notify.RateChange, 0, len(results))
 	for _, r := range results {
+		keepModelNames = append(keepModelNames, r.ModelName)
 		prev, err := s.rates.Upsert(&storage.RateSnapshot{
 			ChannelID:       c.ID,
 			ModelName:       r.ModelName,
@@ -318,6 +320,13 @@ func (s *Service) refreshRatesWithSession(ctx context.Context, c *storage.Channe
 		})
 	}
 	// 一次扫描的所有变化打包推送：去抖策略（合并 / 涨跌幅过滤）由 Dispatcher.Policy 决定。
+	if _, err := s.rates.DeleteRateSnapshotsNotIn(c.ID, keepModelNames); err != nil {
+		progress.Fail(ctx, progress.StageRates, err.Error())
+		if s.log != nil {
+			s.log.Warn("rate stale snapshot cleanup failed", "channel", c.Name, "err", err)
+		}
+		return err
+	}
 	if len(changes) > 0 {
 		if err := s.dispatcher.DispatchRateBatch(ctx, c, changes); err != nil && s.log != nil {
 			s.log.Warn("dispatch rate changes failed", "channel", c.Name, "err", err)
