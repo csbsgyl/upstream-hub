@@ -8,6 +8,7 @@ import {
   CircleDollarSign,
   Clock3,
   Loader2,
+  ExternalLink,
   LogIn,
   Pause,
   Pencil,
@@ -28,7 +29,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog"
 import { useChannels, useChannelRates } from "@/lib/queries"
 import { apiFetch } from "@/lib/api"
 import { useTriggerRefresh } from "@/lib/refresh-context"
-import { channelTypeLabel, money, relativeTime } from "@/lib/format"
+import { channelTypeLabel, money, relativeTime, siteHostLabel } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { syncChannelStream, testLoginStream, type ProgressEvent } from "@/lib/sync-stream"
 import type { Channel } from "@/lib/api-types"
@@ -434,6 +435,18 @@ export function ChannelCards() {
                   >
                     {channelTypeLabel(c.type)}
                   </span>
+                  {siteHostLabel(c.site_url) ? (
+                    <a
+                      href={c.site_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={c.site_url}
+                      className="inline-flex max-w-[180px] items-center gap-1 truncate rounded bg-muted/45 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border transition-colors hover:bg-brand/10 hover:text-brand hover:ring-brand/25"
+                    >
+                      <ExternalLink className="size-3 shrink-0" />
+                      <span className="truncate">{siteHostLabel(c.site_url)}</span>
+                    </a>
+                  ) : null}
                   {!c.monitor_enabled ? (
                     <span className="inline-flex items-center rounded bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                       {"已暂停"}

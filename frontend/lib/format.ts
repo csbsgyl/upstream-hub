@@ -71,3 +71,17 @@ export function channelTypeLabel(t: string) {
       return t
   }
 }
+
+/** 把站点地址显示成不带协议的域名，保留端口和必要路径。 */
+export function siteHostLabel(raw?: string | null): string {
+  const value = raw?.trim()
+  if (!value) return ""
+  try {
+    const parsed = new URL(value.includes("://") ? value : `https://${value}`)
+    return [parsed.host, parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/$/, "")]
+      .filter(Boolean)
+      .join("")
+  } catch {
+    return value.replace(/^https?:\/\//i, "").replace(/\/$/, "")
+  }
+}

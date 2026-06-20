@@ -79,3 +79,20 @@
 - docs/monitoring.md: documents the concise alert notification format.
 - progress.md: records this alert-copy optimization and verification status.
 - Rollback: revert this change set or reset to the commit before this task.
+
+## 2026-06-20 - Task: Show channel origin site links
+### What was done
+- Channel cards now show the configured origin site beside the channel name and type.
+- The display hides the http/https protocol while keeping the domain, port, and meaningful path.
+- The site label opens the original upstream site in a new tab.
+
+### Testing
+- `git diff --check` passed.
+- `npm.cmd run lint` passed in `frontend`.
+- `npm.cmd run build` passed in `frontend`.
+
+### Notes
+- frontend/components/monitor/channel-cards.tsx: adds a compact external site link to each channel card header.
+- frontend/lib/format.ts: adds a site URL display formatter that strips the protocol from labels.
+- progress.md: records this UI improvement and verification status.
+- Rollback: revert this change set or reset to the commit before this task.
