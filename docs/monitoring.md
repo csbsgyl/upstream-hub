@@ -7,3 +7,4 @@
 - When a newer GitHub commit is available, the dashboard header shows a persistent update entry and the browser session shows one bottom-right reminder.
 - Channel origin site labels are hidden by default on dashboard cards and expand only on card hover or keyboard focus to reduce accidental screenshot exposure.
 - Version checks treat unknown local build commits as updateable when GitHub returns a known latest commit, so older deployments can still discover the first update.
+- Rate-change notifications show only changed rate fields; unchanged completion ratios are omitted to avoid confusing 0 -> 0 entries, and zero-baseline changes are labeled as "原值为 0".

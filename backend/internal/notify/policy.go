@@ -113,19 +113,19 @@ func BuildBatchMessage(channel *storage.Channel, changes []RateChange) Message {
 		c := changes[0]
 		direction := changeDirectionLabel(c)
 		icon := rateChangeIcon(direction)
+		lines := []string{
+			fmt.Sprintf("%s 倍率变动（%s）", icon, direction),
+			"上游：" + channel.Name,
+			"分组：" + c.GroupName,
+		}
+		lines = append(lines, rateChangeLines(c)...)
+		lines = append(lines, "时间："+formatNotifyTime(now))
 		return Message{
 			Event:     storage.EventRateChanged,
 			ChannelID: channel.ID,
 			ModelName: c.GroupName,
 			Subject:   fmt.Sprintf("%s【%s】倍率变动 · %s", icon, defaultAppName, channel.Name),
-			Body: joinNotifySections([]string{
-				fmt.Sprintf("%s 倍率变动（%s）", icon, direction),
-				"上游：" + channel.Name,
-				"分组：" + c.GroupName,
-				fmt.Sprintf("倍率：%s -> %s（%s）", formatRatio(c.OldRatio), formatRatio(c.NewRatio), formatChangePct(c.OldRatio, c.NewRatio)),
-				fmt.Sprintf("补全：%s -> %s（%s）", formatRatio(c.OldComp), formatRatio(c.NewComp), formatChangePct(c.OldComp, c.NewComp)),
-				"时间：" + formatNotifyTime(now),
-			}),
+			Body:      joinNotifySections(lines),
 		}
 	}
 
@@ -137,16 +137,7 @@ func BuildBatchMessage(channel *storage.Channel, changes []RateChange) Message {
 	fmt.Fprintf(&b, "时间：%s\n\n", formatNotifyTime(now))
 	fmt.Fprintf(&b, "明细：\n")
 	for _, c := range changes {
-		fmt.Fprintf(&b, "- %s：倍率 %s -> %s（%s），补全 %s -> %s（%s，%s）\n",
-			c.GroupName,
-			formatRatio(c.OldRatio),
-			formatRatio(c.NewRatio),
-			formatChangePct(c.OldRatio, c.NewRatio),
-			formatRatio(c.OldComp),
-			formatRatio(c.NewComp),
-			formatChangePct(c.OldComp, c.NewComp),
-			changeDirectionLabel(c),
-		)
+		fmt.Fprintf(&b, "- %s：%s（%s）\n", c.GroupName, strings.Join(rateChangeInlineParts(c), "，"), changeDirectionLabel(c))
 	}
 
 	// ModelName 在合并消息里没有单一值；填空，订阅过滤改在 Dispatcher 里按"先按订阅切片再合并"处理。
@@ -157,6 +148,22 @@ func BuildBatchMessage(channel *storage.Channel, changes []RateChange) Message {
 		Subject:   fmt.Sprintf("📊【%s】倍率变动 · %s（%d 个分组）", defaultAppName, channel.Name, len(changes)),
 		Body:      b.String(),
 	}
+}
+
+func rateChangeLines(c RateChange) []string {
+	return rateChangeDetails(c, "：")
+}
+
+func rateChangeInlineParts(c RateChange) []string {
+	return rateChangeDetails(c, " ")
+}
+
+func rateChangeDetails(c RateChange, separator string) []string {
+	lines := []string{fmt.Sprintf("倍率%s%s -> %s（%s）", separator, formatRatio(c.OldRatio), formatRatio(c.NewRatio), formatChangePct(c.OldRatio, c.NewRatio))}
+	if c.OldComp != c.NewComp {
+		lines = append(lines, fmt.Sprintf("补全%s%s -> %s（%s）", separator, formatRatio(c.OldComp), formatRatio(c.NewComp), formatChangePct(c.OldComp, c.NewComp)))
+	}
+	return lines
 }
 
 func rateChangeIcon(direction string) string {
@@ -202,7 +209,10 @@ func formatRatio(v float64) string {
 
 func formatChangePct(oldV, newV float64) string {
 	if oldV == 0 {
-		return "新倍率"
+		if newV == 0 {
+			return "+0.0%"
+		}
+		return "原值为 0"
 	}
 	pct := (newV - oldV) / math.Abs(oldV) * 100
 	return fmt.Sprintf("%+.1f%%", pct)

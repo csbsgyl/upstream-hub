@@ -45,6 +45,50 @@ func TestBuildBatchMessageSingleRateChange(t *testing.T) {
 	}
 }
 
+func TestBuildBatchMessageHidesUnchangedCompletionRatio(t *testing.T) {
+	channel := &storage.Channel{ID: 9, Name: "可达鸭"}
+	msg := BuildBatchMessage(channel, []RateChange{{
+		GroupName: "CCMax 满血号池",
+		OldRatio:  0.8,
+		NewRatio:  0.7,
+		OldComp:   0,
+		NewComp:   0,
+		ChangedAt: time.Now(),
+	}})
+
+	for _, want := range []string{"📉 倍率变动（下调）", "上游：可达鸭", "分组：CCMax 满血号池", "倍率：0.8 -> 0.7（-12.5%）", "时间："} {
+		if !strings.Contains(msg.Body, want) {
+			t.Fatalf("body %q does not contain %q", msg.Body, want)
+		}
+	}
+	for _, unwanted := range []string{"补全：0 -> 0", "原值为 0"} {
+		if strings.Contains(msg.Body, unwanted) {
+			t.Fatalf("body %q should not contain %q", msg.Body, unwanted)
+		}
+	}
+}
+
+func TestBuildBatchMessageLabelsZeroBaseline(t *testing.T) {
+	channel := &storage.Channel{ID: 10, Name: "零基线上游"}
+	msg := BuildBatchMessage(channel, []RateChange{{
+		GroupName: "new group",
+		OldRatio:  0,
+		NewRatio:  0.7,
+		OldComp:   0,
+		NewComp:   0,
+		ChangedAt: time.Now(),
+	}})
+
+	for _, want := range []string{"倍率：0 -> 0.7（原值为 0）", "📈 倍率变动（上调）"} {
+		if !strings.Contains(msg.Body, want) {
+			t.Fatalf("body %q does not contain %q", msg.Body, want)
+		}
+	}
+	if strings.Contains(msg.Body, "新倍率") {
+		t.Fatalf("body %q should not contain the old ambiguous label", msg.Body)
+	}
+}
+
 func TestBuildBatchMessageMultipleRateChanges(t *testing.T) {
 	channel := &storage.Channel{ID: 8, Name: "质量上游"}
 	msg := BuildBatchMessage(channel, []RateChange{
@@ -55,7 +99,7 @@ func TestBuildBatchMessageMultipleRateChanges(t *testing.T) {
 	if !strings.Contains(msg.Subject, "2 个分组") || !strings.Contains(msg.Subject, "📊") {
 		t.Fatalf("subject = %q, want merged count and icon", msg.Subject)
 	}
-	for _, want := range []string{"📊 倍率批量变动", "上游：质量上游", "数量：2 个分组", "codex pro：倍率 1 -> 1.2（+20.0%），补全 1 -> 1（+0.0%，上调）", "claude：倍率 2.1 -> 1.8（-14.3%），补全 2 -> 1.7（-15.0%，下调）"} {
+	for _, want := range []string{"📊 倍率批量变动", "上游：质量上游", "数量：2 个分组", "codex pro：倍率 1 -> 1.2（+20.0%）（上调）", "claude：倍率 2.1 -> 1.8（-14.3%），补全 2 -> 1.7（-15.0%）（下调）"} {
 		if !strings.Contains(msg.Body, want) {
 			t.Fatalf("body %q does not contain %q", msg.Body, want)
 		}

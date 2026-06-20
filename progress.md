@@ -184,3 +184,23 @@
 - .github/topics.txt: records the recommended GitHub repository topics.
 - progress.md: records this GitHub information update.
 - Rollback: revert this change set or reset to the commit before this task.
+
+## 2026-06-20 - Task: Clarify rate-change notification details
+### What was done
+- Rate-change notification bodies now omit unchanged completion-ratio fields instead of showing confusing `0 -> 0` lines.
+- The zero-baseline formatter now uses `原值为 0` for real changes from zero to a non-zero value and no longer applies that label to `0 -> 0`.
+- Added notification template coverage for the screenshot scenario where only the main ratio changed.
+
+### Testing
+- `git diff --check` passed.
+- `npm.cmd run lint` passed in `frontend`.
+- `npm.cmd run build` passed in `frontend`.
+- Rate notification source checks passed for conditional completion-ratio rendering.
+- `go test ./...` could not run locally because `go` is not installed or not available on this machine.
+
+### Notes
+- backend/internal/notify/policy.go: formats rate-change details with only meaningful changed fields.
+- backend/internal/notify/policy_test.go: covers hidden unchanged completion ratios and updated batch wording.
+- docs/monitoring.md: documents the cleaner rate-change notification behavior.
+- progress.md: records this notification wording fix.
+- Rollback: revert this change set or reset to the commit before this task.
