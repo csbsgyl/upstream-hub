@@ -166,3 +166,21 @@
 - docs/monitoring.md: documents update detection for unknown local builds.
 - progress.md: records this update detection fix.
 - Rollback: revert this change set or reset to the commit before this task.
+
+## 2026-06-20 - Task: Update GitHub project information
+### What was done
+- Expanded the README with current feature coverage, deployment, update, notification, operations, and security guidance.
+- Added repository topic suggestions for GitHub project metadata.
+- Prepared the repository description and topics for GitHub About metadata updates.
+
+### Testing
+- `git diff --check` passed.
+- README metadata and image path check passed.
+- `npm.cmd run lint` passed in `frontend`.
+- `npm.cmd run build` passed in `frontend`.
+
+### Notes
+- README.md: refreshes the public GitHub project documentation for the completed feature set.
+- .github/topics.txt: records the recommended GitHub repository topics.
+- progress.md: records this GitHub information update.
+- Rollback: revert this change set or reset to the commit before this task.
