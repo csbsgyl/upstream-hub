@@ -18,8 +18,11 @@ func TestDifferentCommit(t *testing.T) {
 	if DifferentCommit("cb0bec2", "cb0bec2fc78ad4e961a432cf69794ff4a928f1a8") {
 		t.Fatal("DifferentCommit returned true for matching short/full commit")
 	}
-	if DifferentCommit("dev", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
-		t.Fatal("DifferentCommit returned true when current commit is unknown")
+	if !DifferentCommit("dev", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+		t.Fatal("DifferentCommit returned false when current commit is unknown but latest is known")
+	}
+	if DifferentCommit("dev", "unknown") {
+		t.Fatal("DifferentCommit returned true when latest commit is unknown")
 	}
 }
 

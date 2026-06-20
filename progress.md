@@ -146,3 +146,23 @@
 - docs/monitoring.md: documents the screenshot-safe default behavior for channel origin labels.
 - progress.md: records this privacy-oriented UI adjustment.
 - Rollback: revert this change set or reset to the commit before this task.
+
+## 2026-06-20 - Task: Detect updates from unknown local builds
+### What was done
+- Version checks now treat an unknown local build commit as updateable when GitHub returns a known latest commit.
+- Updated the version comparison test expectation for first-time deployments built before commit metadata was embedded.
+- Documented the version-check behavior for older deployments.
+
+### Testing
+- `git diff --check` passed.
+- `npm.cmd run lint` passed in `frontend`.
+- `npm.cmd run build` passed in `frontend`.
+- A deterministic Node check for the version comparison cases passed.
+- `go test ./...` could not run locally because `go` is not installed or not available on this machine.
+
+### Notes
+- backend/internal/version/version.go: changes update comparison so unknown local commits do not suppress available updates.
+- backend/internal/version/version_test.go: updates comparison coverage for unknown local and unknown latest commits.
+- docs/monitoring.md: documents update detection for unknown local builds.
+- progress.md: records this update detection fix.
+- Rollback: revert this change set or reset to the commit before this task.

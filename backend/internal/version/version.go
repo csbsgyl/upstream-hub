@@ -65,8 +65,11 @@ func CommitKnown(sha string) bool {
 func DifferentCommit(current, latest string) bool {
 	current = strings.TrimSpace(strings.ToLower(current))
 	latest = strings.TrimSpace(strings.ToLower(latest))
-	if !CommitKnown(current) || !CommitKnown(latest) {
+	if !CommitKnown(latest) {
 		return false
+	}
+	if !CommitKnown(current) {
+		return true
 	}
 	return current != latest && !strings.HasPrefix(current, latest) && !strings.HasPrefix(latest, current)
 }
