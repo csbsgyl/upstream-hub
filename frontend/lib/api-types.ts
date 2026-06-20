@@ -245,6 +245,21 @@ export interface OpsUpdateResult {
   started_at: string
 }
 
+export interface OpsUpdateStatus {
+  ok: boolean
+  status: "idle" | "starting" | "running" | "completed" | "failed" | "unknown"
+  running: boolean
+  completed: boolean
+  failed: boolean
+  phase: string
+  phase_label: string
+  progress: number
+  message: string
+  log_file?: string
+  lines?: string[]
+  updated_at?: string
+}
+
 export interface OpsStatus {
   database: string
   auth_enabled: boolean

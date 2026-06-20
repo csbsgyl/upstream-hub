@@ -33,7 +33,11 @@ c_ok()    { printf '\033[32m[ OK ]\033[0m  %s\n' "$*"; }
 c_warn()  { printf '\033[33m[WARN]\033[0m  %s\n' "$*"; }
 c_err()   { printf '\033[31m[FAIL]\033[0m  %s\n' "$*" >&2; }
 
+stage_marker() { printf '[UPSTREAMHUB_STAGE] %s|%s\n' "$1" "$2"; }
+
+
 # ---- 1. 环境检查 ----
+stage_marker "check" "Checking Docker and Compose"
 if ! command -v docker >/dev/null 2>&1; then
   c_err "未检测到 docker，请先安装：https://docs.docker.com/engine/install/"
   exit 1
@@ -52,6 +56,7 @@ c_ok "docker 与 compose 就绪（${COMPOSE}）"
 
 # ---- 2. 生成 .env（仅首次）----
 # 生成一个 URL 安全的随机串，优先 openssl，回退 /dev/urandom。
+stage_marker "env" "Preparing environment"
 gen_secret() {
   local n="${1:-48}"
   if command -v openssl >/dev/null 2>&1; then
@@ -210,6 +215,7 @@ should_create_deploy_backup() {
 }
 
 # ---- 3. 拉取最新代码 ----
+stage_marker "pull" "Pulling latest code"
 if [[ -d .git ]]; then
   c_info "拉取最新代码 …"
   git config --global --add safe.directory "${ROOT_DIR}" >/dev/null 2>&1 || true
@@ -227,6 +233,7 @@ else
 fi
 
 # ---- 4. 已有部署则按间隔做数据库备份 ----
+stage_marker "backup" "Checking deployment backup"
 if [[ -f .env ]] && [[ -n "$(${COMPOSE} ps -q postgres 2>/dev/null || true)" ]]; then
   BACKUP_INTERVAL_DAYS="$(deploy_backup_interval_days)"
   BACKUP_DIR="$(deploy_backup_dir)"
@@ -247,6 +254,7 @@ fi
 
 # ---- 5. 构建并启动 ----
 c_info "构建并启动容器（首次构建较慢，请耐心等待）…"
+stage_marker "build" "Building image and restarting service"
 export UPSTREAMHUB_VERSION="${UPSTREAMHUB_VERSION:-0.1.0-dev}"
 export UPSTREAMHUB_REPOSITORY="${UPSTREAMHUB_REPOSITORY:-csbsgyl/upstream-hub}"
 if [[ -d .git ]]; then
@@ -261,6 +269,7 @@ ${COMPOSE} up -d --build
 
 # ---- 6. 健康检查 ----
 # 从 .env 读对外端口，默认 8080
+stage_marker "health" "Waiting for health check"
 HTTP_PORT="$(grep -E '^UPSTREAMHUB_HTTP_PORT=' .env 2>/dev/null | cut -d= -f2 || true)"
 HTTP_PORT="${HTTP_PORT:-8080}"
 
@@ -276,6 +285,7 @@ done
 
 echo
 if [[ "${HEALTHY}" == "1" ]]; then
+  stage_marker "done" "Deployment completed"
   c_ok "部署完成 ✅"
   echo "  访问地址： http://localhost:${HTTP_PORT}"
   echo "  默认账号： admin / admin （首次登录会要求修改密码）"

@@ -180,6 +180,37 @@ func TestDBDSN(t *testing.T) {
 	}
 }
 
+func TestParseUpdateStatusTracksLivePhase(t *testing.T) {
+	status := parseUpdateStatus([]string{
+		"[UPSTREAMHUB_STAGE] check|Checking Docker and Compose",
+		"[UPSTREAMHUB_STAGE] build|Building image and restarting service",
+	})
+	if status.Status != "running" || !status.Running || status.Phase != "build" || status.Progress != 76 {
+		t.Fatalf("parseUpdateStatus() = %#v, want running build phase", status)
+	}
+	if status.Message == "" {
+		t.Fatalf("parseUpdateStatus message is empty, want phase message")
+	}
+}
+
+func TestParseUpdateStatusTerminalStates(t *testing.T) {
+	completed := parseUpdateStatus([]string{
+		"[UPSTREAMHUB_STAGE] health|Waiting for health check",
+		"[UPSTREAMHUB_STAGE] done|Deployment completed",
+	})
+	if completed.Status != "completed" || !completed.Completed || completed.Running || completed.Progress != 100 {
+		t.Fatalf("completed status = %#v, want completed 100%%", completed)
+	}
+
+	failed := parseUpdateStatus([]string{
+		"[UPSTREAMHUB_STAGE] build|Building image and restarting service",
+		"[UPSTREAMHUB_STAGE] failed|Update failed with exit code 1",
+	})
+	if failed.Status != "failed" || !failed.Failed || failed.Running || failed.Phase != "failed" {
+		t.Fatalf("failed status = %#v, want failed terminal state", failed)
+	}
+}
+
 func TestDockerUpdateArgsMountsHostRepoAndSocket(t *testing.T) {
 	args := dockerUpdateArgs("/srv/upstream-hub", "/var/run/docker.sock", "upstream-hub:local", "backups/update.log")
 	joined := strings.Join(args, "\n")
@@ -191,6 +222,9 @@ func TestDockerUpdateArgsMountsHostRepoAndSocket(t *testing.T) {
 		"type=bind,source=/srv/upstream-hub,target=/srv/upstream-hub",
 		"upstream-hub:local",
 		"bash ./scripts/deploy.sh",
+		"[UPSTREAMHUB_STAGE] start|Updater container started",
+		"[UPSTREAMHUB_STAGE] done|Update completed",
+		"[UPSTREAMHUB_STAGE] failed|Update failed with exit code",
 		"backups/update.log",
 	} {
 		if !strings.Contains(joined, want) {

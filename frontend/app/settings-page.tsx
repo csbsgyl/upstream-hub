@@ -39,6 +39,7 @@ import type {
   OpsRetentionResult,
   OpsScanResult,
   OpsUpdateResult,
+  OpsUpdateStatus,
   VersionCheck,
 } from "@/lib/api-types"
 
@@ -158,72 +159,125 @@ function StatTile({
   )
 }
 
+type UpdateStepState = "done" | "active" | "pending" | "error"
+
+const updateStepOrder = ["start", "check", "env", "pull", "backup", "build", "health", "done"]
+
+function updateStepState(status: OpsUpdateStatus | null, phase: string): UpdateStepState {
+  if (status?.failed && status.phase === phase) return "error"
+  if (status?.completed || status?.phase === "done") return "done"
+  const current = updateStepOrder.indexOf(status?.phase ?? "start")
+  const index = updateStepOrder.indexOf(phase)
+  if (current < 0 || index < 0) return "pending"
+  if (index < current) return "done"
+  if (index === current) return "active"
+  return "pending"
+}
+
 function UpdateActivityPanel({
   running,
   result,
   startedAt,
+  status,
+  pollError,
 }: {
   running: boolean
   result: OpsUpdateResult | null
   startedAt: string | null
+  status: OpsUpdateStatus | null
+  pollError: string | null
 }) {
+  const lines = status?.lines?.slice(-40) ?? []
+  const progress = Math.max(0, Math.min(100, status?.progress ?? (result ? 8 : 4)))
+  const failed = Boolean(status?.failed || status?.status === "unknown")
+  const completed = Boolean(status?.completed)
+  const title = running
+    ? "正在启动更新任务"
+    : status?.phase_label
+      ? `更新进度：${status.phase_label}`
+      : result
+        ? "更新任务已启动"
+        : "正在准备更新任务"
+  const message = pollError || status?.message || (result ? "正在等待 updater 写入实时日志" : "正在请求后端启动 updater")
+  const badgeText = completed ? "已完成" : failed ? "需处理" : "实时更新中"
+  const badgeClass = failed
+    ? "bg-danger/10 text-danger ring-danger/20"
+    : completed
+      ? "bg-success/10 text-success ring-success/20"
+      : "bg-brand/10 text-brand ring-brand/20"
+  const iconClass = failed
+    ? "bg-danger/10 text-danger ring-danger/20"
+    : completed
+      ? "bg-success/10 text-success ring-success/20"
+      : "bg-brand/10 text-brand ring-brand/20"
   const steps = [
-    {
-      label: "启动任务",
-      detail: result?.container_name || "创建 updater 容器",
-      state: result ? "done" : "active",
-    },
-    {
-      label: "备份数据",
-      detail: "写入 backups 目录",
-      state: result ? "active" : "pending",
-    },
-    {
-      label: "拉取代码",
-      detail: "同步仓库最新提交",
-      state: result ? "active" : "pending",
-    },
-    {
-      label: "重建服务",
-      detail: "Docker 服务会短暂重启",
-      state: result ? "active" : "pending",
-    },
-  ] satisfies Array<{ label: string; detail: string; state: "active" | "done" | "pending" }>
+    { phase: "check", label: "检查环境", detail: "Docker / Compose" },
+    { phase: "env", label: "准备配置", detail: ".env 与更新参数" },
+    { phase: "pull", label: "拉取代码", detail: "同步最新提交" },
+    { phase: "backup", label: "备份数据", detail: "按间隔保护数据" },
+    { phase: "build", label: "构建重启", detail: "重建 Docker 服务" },
+    { phase: "health", label: "健康检查", detail: "等待服务恢复" },
+  ].map((step) => ({ ...step, state: updateStepState(status, step.phase) }))
 
   return (
-    <div className="mt-3 overflow-hidden rounded-lg border border-brand/20 bg-brand/5 px-3 py-3">
+    <div
+      className={cn(
+        "mt-3 overflow-hidden rounded-lg border px-3 py-3 transition-[border-color,background-color]",
+        failed
+          ? "border-danger/30 bg-danger/5"
+          : completed
+            ? "border-success/25 bg-success/5"
+            : "border-brand/20 bg-brand/5",
+      )}
+    >
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="relative flex size-9 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand ring-1 ring-brand/20">
-            <span className="absolute inset-0 rounded-md bg-brand/20 opacity-60 animate-ping" />
-            <RefreshCw className="relative size-4 animate-spin" />
+          <span className={cn("relative flex size-9 shrink-0 items-center justify-center rounded-md ring-1", iconClass)}>
+            {!completed && !failed ? <span className="absolute inset-0 rounded-md bg-brand/20 opacity-60 animate-ping" /> : null}
+            {failed ? (
+              <AlertTriangle className="relative size-4" />
+            ) : completed ? (
+              <CheckCircle2 className="relative size-4" />
+            ) : (
+              <RefreshCw className="relative size-4 animate-spin" />
+            )}
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground">
-              {running ? "正在启动更新任务" : "更新任务已交给后台执行"}
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              {running
-                ? "正在请求后端启动 updater，成功后会继续备份、拉取代码并重建服务。"
-                : `服务可能会短暂断开；任务从 ${startedAt ? relativeTime(startedAt) : "刚刚"} 开始。`}
+            <p className="text-sm font-semibold text-foreground">{title}</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{message}</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {startedAt ? `开始于 ${relativeTime(startedAt)}` : "等待任务开始"}
+              {status?.updated_at ? ` · 日志更新于 ${relativeTime(status.updated_at)}` : ""}
             </p>
           </div>
         </div>
-        <Badge className="w-fit bg-brand/10 text-brand ring-1 ring-brand/20">
-          后台更新中
-        </Badge>
+        <Badge className={cn("w-fit ring-1", badgeClass)}>{badgeText}</Badge>
       </div>
 
-      <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-background ring-1 ring-border/70">
-        <div
-          className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-linear-to-r from-transparent via-brand to-transparent"
-          style={{ animation: "upstream-update-sweep 1.45s ease-in-out infinite" }}
-        />
+      <div className="mt-3 flex items-center gap-3">
+        <div className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-background ring-1 ring-border/70">
+          <div
+            className={cn(
+              "h-full rounded-full transition-[width] duration-500",
+              failed ? "bg-danger" : completed ? "bg-success" : "bg-brand",
+            )}
+            style={{ width: `${progress}%` }}
+          />
+          {!completed && !failed ? (
+            <div
+              className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-linear-to-r from-transparent via-white/50 to-transparent"
+              style={{ animation: "upstream-update-sweep 1.35s ease-in-out infinite" }}
+            />
+          ) : null}
+        </div>
+        <span className={cn("w-10 text-right text-xs font-semibold", failed ? "text-danger" : completed ? "text-success" : "text-brand")}>
+          {progress}%
+        </span>
       </div>
 
-      <div className="mt-3 grid gap-2 md:grid-cols-4">
+      <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
         {steps.map((step) => (
-          <div key={step.label} className="rounded-md border border-border bg-background/75 px-3 py-2">
+          <div key={step.phase} className="rounded-md border border-border bg-background/75 px-3 py-2">
             <div className="flex items-center gap-2">
               <span
                 className={cn(
@@ -232,7 +286,9 @@ function UpdateActivityPanel({
                     ? "bg-success text-success-foreground"
                     : step.state === "active"
                       ? "bg-brand"
-                      : "bg-muted-foreground/40",
+                      : step.state === "error"
+                        ? "bg-danger"
+                        : "bg-muted-foreground/40",
                 )}
               >
                 {step.state === "done" ? (
@@ -249,13 +305,19 @@ function UpdateActivityPanel({
       </div>
 
       {result ? (
-        <div className="mt-3 rounded-md border border-success/20 bg-success/5 px-3 py-2 text-xs leading-relaxed text-success">
-          <span className="font-medium">已提交：</span>
+        <div className="mt-3 rounded-md border border-border bg-background/80 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+          <span className="font-medium text-foreground">任务：</span>
           {result.container_name}
           {" · 日志 "}
-          <span className="font-mono">{result.log_file}</span>
+          <span className="font-mono text-foreground">{status?.log_file ?? result.log_file}</span>
         </div>
       ) : null}
+
+      <ScrollArea className="mt-3 h-44 rounded-md border border-border bg-background/90">
+        <pre className="whitespace-pre-wrap break-words px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+          {lines.length > 0 ? lines.join("\n") : "等待更新日志写入..."}
+        </pre>
+      </ScrollArea>
     </div>
   )
 }
@@ -310,6 +372,13 @@ function wait(ms: number) {
   return new Promise<void>((resolve) => window.setTimeout(resolve, ms))
 }
 
+function fetchUpdateStatus(logFile?: string | null) {
+  const query = new URLSearchParams()
+  if (logFile) query.set("log_file", logFile)
+  const suffix = query.toString()
+  return apiFetch<OpsUpdateStatus>(`/ops/update/status${suffix ? `?${suffix}` : ""}`)
+}
+
 export default function SettingsPage() {
   const { username } = useAuth()
   const status = useOpsStatus()
@@ -321,6 +390,8 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState<BusyAction | null>(null)
   const [lastRetention, setLastRetention] = useState<OpsRetentionResult | null>(null)
   const [lastUpdate, setLastUpdate] = useState<OpsUpdateResult | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<OpsUpdateStatus | null>(null)
+  const [updatePollError, setUpdatePollError] = useState<string | null>(null)
   const [updateStartedAt, setUpdateStartedAt] = useState<string | null>(null)
   const [forcedVersionInfo, setForcedVersionInfo] = useState<VersionCheck | null>(null)
   const { confirm, dialog } = useConfirm()
@@ -351,12 +422,17 @@ export default function SettingsPage() {
   const versionBadge = version.loading ? "检查中" : versionError ? "检查失败" : versionInfo?.has_update ? "可更新" : "无需更新"
   const autoUpdate = versionInfo?.auto_update
   const autoUpdateReady = Boolean(versionInfo?.has_update && autoUpdate?.available)
-  const updateActive = busy === "update" || Boolean(lastUpdate)
+  const updateActive = busy === "update" || Boolean(lastUpdate) || Boolean(updateStartedAt)
+  const updateRunning = busy === "update" || Boolean(lastUpdate && (!updateStatus || updateStatus.running || updateStatus.status === "starting"))
+  const updateFailed = Boolean(updateStatus?.failed || updateStatus?.status === "unknown")
+  const updateCompleted = Boolean(updateStatus?.completed)
   const versionChecking = busy === "version-check" || (version.loading && !versionInfo)
 
   useEffect(() => {
     if (!version.loading && version.data && !version.data.has_update && lastUpdate) {
       setLastUpdate(null)
+      setUpdateStatus(null)
+      setUpdatePollError(null)
       setUpdateStartedAt(null)
     }
   }, [lastUpdate, version.data, version.loading])
@@ -371,10 +447,43 @@ export default function SettingsPage() {
     if (!lastUpdate) return
     const timer = window.setTimeout(() => {
       setLastUpdate(null)
+      setUpdateStatus(null)
+      setUpdatePollError(null)
       setUpdateStartedAt(null)
     }, 10 * 60 * 1000)
     return () => window.clearTimeout(timer)
   }, [lastUpdate])
+
+  useEffect(() => {
+    if (!lastUpdate?.log_file) return
+    let cancelled = false
+    let timer: number | undefined
+    let failures = 0
+
+    const poll = async () => {
+      try {
+        const current = await fetchUpdateStatus(lastUpdate.log_file)
+        if (cancelled) return
+        failures = 0
+        setUpdateStatus(current)
+        setUpdatePollError(null)
+        if (current.completed || current.failed || current.status === "unknown" || current.status === "idle") return
+        timer = window.setTimeout(poll, 2000)
+      } catch (e) {
+        if (cancelled) return
+        failures += 1
+        const err = e as Error
+        setUpdatePollError(failures <= 2 ? "服务可能正在重启，正在重新连接实时日志" : err.message || "实时日志暂时不可用")
+        timer = window.setTimeout(poll, 3000)
+      }
+    }
+
+    poll()
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [lastUpdate?.log_file])
 
   const diagnosticsSummary = useMemo(() => {
     if (!s) return ""
@@ -523,10 +632,13 @@ export default function SettingsPage() {
     })
     if (!ok) return
     setLastUpdate(null)
+    setUpdateStatus(null)
+    setUpdatePollError(null)
     setUpdateStartedAt(new Date().toISOString())
     await runAction("update", async () => {
       const res = await apiFetch<OpsUpdateResult>("/ops/update", { method: "POST" })
       setLastUpdate(res)
+      fetchUpdateStatus(res.log_file).then(setUpdateStatus).catch(() => setUpdatePollError("实时日志正在初始化"))
       toast.success(res.message || "更新任务已启动", {
         description: res.log_file ? `日志：${res.log_file}` : undefined,
         duration: 9000,
@@ -534,6 +646,8 @@ export default function SettingsPage() {
       reloadOps()
     }).catch((e: Error) => {
       setLastUpdate(null)
+      setUpdateStatus(null)
+      setUpdatePollError(null)
       setUpdateStartedAt(null)
       toast.error(e.message || "更新启动失败")
     })
@@ -674,15 +788,11 @@ export default function SettingsPage() {
               busy={busy}
               busyKey="update"
               className="gap-1.5"
-              disabled={!autoUpdateReady || updateActive}
+              disabled={!autoUpdateReady || updateRunning}
               onClick={runUpdate}
             >
-              {busy === "update" ? null : lastUpdate ? (
-                <RefreshCw className="size-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="size-3.5" />
-              )}
-              {busy === "update" ? "启动中" : lastUpdate ? "后台更新" : "立即更新"}
+              {updateRunning ? null : <RefreshCw className="size-3.5" />}
+              {updateRunning ? "更新中" : updateFailed ? "重新更新" : updateCompleted ? "再次更新" : "立即更新"}
             </ActionButton>
             <ActionButton
               busy={busy}
@@ -741,6 +851,8 @@ export default function SettingsPage() {
               running={busy === "update"}
               result={lastUpdate}
               startedAt={lastUpdate?.started_at ?? updateStartedAt}
+              status={updateStatus}
+              pollError={updatePollError}
             />
           ) : null}
         </CardContent>

@@ -18,3 +18,27 @@
 - `backend/internal/monitor/service.go`: runs stale snapshot cleanup after a successful rate refresh.
 - `docs/monitoring.md`: documents notification timezone and current rate snapshot cleanup behavior.
 - Rollback: revert this change set or reset to the commit before this task.
+
+## 2026-06-20 - Task: Add live web update progress
+### What was done
+- Web one-click updates now expose a status endpoint that reads the update log and reports current phase, progress percentage, terminal state, and recent log lines.
+- The deployment script emits stable update stage markers, and the settings page now polls them every 2 seconds while an update is active.
+- The update panel now shows phase steps, animated progress, the current log tail, and unlocks retry after failed or unknown states.
+
+### Testing
+- `git diff --check` passed.
+- `D:\rj-gj\Git\bin\bash.exe -n scripts/deploy.sh` passed.
+- `npm.cmd run lint` passed in `frontend`.
+- `npm.cmd run build` passed in `frontend`.
+- Backend Go tests and `gofmt` could not be run locally because `go` and `gofmt` are not installed or not available on this machine.
+
+### Notes
+- backend/internal/api/ops.go: registers the update status endpoint.
+- backend/internal/api/ops_update.go: adds update log parsing, status response generation, and updater stage markers.
+- backend/internal/api/validation_test.go: verifies update status parsing and docker updater marker injection.
+- frontend/lib/api-types.ts: adds the update status response type.
+- frontend/app/settings-page.tsx: replaces the background-only update panel with live progress polling, stage UI, and log tail display.
+- scripts/deploy.sh: emits machine-readable stage markers during deployment.
+- docs/monitoring.md: documents live web update progress behavior.
+- progress.md: records this task and verification status.
+- Rollback: revert this change set or reset to the commit before this task.
