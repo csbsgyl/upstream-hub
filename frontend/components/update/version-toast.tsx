@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom"
 import { useVersionCheck } from "@/lib/queries"
 import { useAuth } from "@/lib/auth-context"
 
-const SEEN_KEY = "uh_version_seen"
+const SEEN_KEY = "uh_version_seen_session"
 
 export function VersionToast() {
   const navigate = useNavigate()
@@ -24,11 +24,11 @@ export function VersionToast() {
     const data = version.data
     if (!data || data.check_error || !data.has_update) return
     if (shownRef.current === id) return
-    if (typeof window !== "undefined" && window.localStorage.getItem(SEEN_KEY) === id) return
+    if (typeof window !== "undefined" && window.sessionStorage.getItem(SEEN_KEY) === id) return
 
     shownRef.current = id
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(SEEN_KEY, id)
+      window.sessionStorage.setItem(SEEN_KEY, id)
     }
 
     const latest = data.latest_short ?? "unknown"
@@ -38,7 +38,7 @@ export function VersionToast() {
         ? `当前 ${current}，可以在设置里一键更新。`
         : `当前 ${current}，设置里会显示更新环境缺少什么。`,
       action: {
-        label: "去设置",
+        label: "去更新",
         onClick: () => {
           navigate("/settings")
         },

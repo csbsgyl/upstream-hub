@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTheme } from "next-themes"
-import { Github, LogOut, RefreshCw, Sun, Moon, Settings } from "lucide-react"
+import { Github, LogOut, RefreshCw, Sun, Moon, Settings, Sparkles } from "lucide-react"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import {
@@ -11,7 +11,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { useTriggerRefresh } from "@/lib/refresh-context"
-import { useChannels, useVersionInfo } from "@/lib/queries"
+import { useChannels, useVersionCheck } from "@/lib/queries"
 import { relativeTime } from "@/lib/format"
 
 export function MonitorHeader() {
@@ -19,11 +19,13 @@ export function MonitorHeader() {
   const { username, authDisabled, logout } = useAuth()
   const refresh = useTriggerRefresh()
   const channels = useChannels()
-  const version = useVersionInfo()
+  const version = useVersionCheck()
   const [mounted, setMounted] = useState(false)
   const [syncing, setSyncing] = useState(false)
-  const repoURL = version.data?.repo_url ?? "https://github.com/csbsgyl/upstream-hub"
-  const repoName = version.data?.repository ?? "csbsgyl/upstream-hub"
+  const versionInfo = version.data
+  const hasUpdate = Boolean(versionInfo?.has_update && !versionInfo.check_error)
+  const repoURL = versionInfo?.current.repo_url ?? "https://github.com/csbsgyl/upstream-hub"
+  const repoName = versionInfo?.current.repository ?? "csbsgyl/upstream-hub"
 
   useEffect(() => setMounted(true), [])
 
@@ -152,6 +154,33 @@ export function MonitorHeader() {
             <RefreshCw className={cn("size-3.5", syncing && "animate-spin")} />
             {"刷新"}
           </Button>
+
+          {hasUpdate ? (
+            <Tooltip delayDuration={200}>
+              <TooltipTrigger asChild>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 border-warning/30 bg-warning/10 px-2 text-xs font-semibold text-warning shadow-[0_0_0_1px_rgba(245,158,11,0.10)] hover:bg-warning/15 hover:text-warning"
+                  aria-label="检测到新版本，前往运维中心更新"
+                >
+                  <Link to="/settings">
+                    <Sparkles className="size-3.5" />
+                    <span>可更新</span>
+                    {versionInfo?.latest_short ? (
+                      <span className="hidden font-mono text-[10px] sm:inline">{versionInfo.latest_short}</span>
+                    ) : null}
+                  </Link>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                {versionInfo
+                  ? "当前 " + versionInfo.current.short_commit + " · 最新 " + (versionInfo.latest_short ?? "未知") + "，点击前往运维中心更新"
+                  : "检测到新版本，点击前往运维中心更新"}
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
 
           {/* GitHub repo link */}
           <Tooltip delayDuration={200}>

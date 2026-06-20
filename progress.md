@@ -111,3 +111,21 @@
 - frontend/components/monitor/channel-cards.tsx: updates the origin site link badge color and hover treatment.
 - progress.md: records this visual polish and verification status.
 - Rollback: revert this change set or reset to the commit before this task.
+
+## 2026-06-20 - Task: Restore dashboard update reminders
+### What was done
+- The dashboard header now checks the full version check result and shows a persistent update entry when a newer GitHub commit exists.
+- The update toast now suppresses duplicate reminders only for the current browser session instead of permanently.
+- Documented the dashboard update reminder behavior.
+
+### Testing
+- `git diff --check` passed.
+- `npm.cmd run lint` passed in `frontend`.
+- `npm.cmd run build` passed in `frontend`.
+
+### Notes
+- frontend/components/monitor/monitor-header.tsx: shows a persistent update shortcut when `has_update` is true.
+- frontend/components/update/version-toast.tsx: changes update reminder suppression from local storage to session storage.
+- docs/monitoring.md: documents dashboard update reminder behavior.
+- progress.md: records this update reminder fix and verification status.
+- Rollback: revert this change set or reset to the commit before this task.
