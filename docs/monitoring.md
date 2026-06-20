@@ -5,3 +5,4 @@
 - Web updates expose live progress through `/api/ops/update/status`. The endpoint reads the current update log, maps deploy markers to phases, and returns the latest log tail for the settings page.
 - Alert notifications keep the payload concise: icon/title, affected upstream, key values, and China-time timestamp. Generic advice text is omitted to reduce notification noise.
 - When a newer GitHub commit is available, the dashboard header shows a persistent update entry and the browser session shows one bottom-right reminder.
+- Channel origin site labels are hidden by default on dashboard cards and expand only on card hover or keyboard focus to reduce accidental screenshot exposure.

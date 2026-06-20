@@ -129,3 +129,20 @@
 - docs/monitoring.md: documents dashboard update reminder behavior.
 - progress.md: records this update reminder fix and verification status.
 - Rollback: revert this change set or reset to the commit before this task.
+
+## 2026-06-20 - Task: Hide channel origin labels until hover
+### What was done
+- Channel cards now keep origin site text hidden by default to avoid exposing upstream addresses in screenshots.
+- The origin site entry remains clickable and expands when the card is hovered or focused.
+- Documented the privacy-oriented channel site label behavior.
+
+### Testing
+- `git diff --check` passed.
+- `npm.cmd run lint` passed in `frontend`.
+- `npm.cmd run build` passed in `frontend`.
+
+### Notes
+- frontend/components/monitor/channel-cards.tsx: changes origin site labels to reveal only on hover or focus while keeping the external link available.
+- docs/monitoring.md: documents the screenshot-safe default behavior for channel origin labels.
+- progress.md: records this privacy-oriented UI adjustment.
+- Rollback: revert this change set or reset to the commit before this task.

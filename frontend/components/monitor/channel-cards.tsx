@@ -412,12 +412,13 @@ export function ChannelCards() {
           {channels.map((c) => {
             const status = statusOf(c)
             const meta = statusMap[status]
+            const siteLabel = siteHostLabel(c.site_url)
             return (
               <Card
                 key={c.id}
                 id={`channel-${c.id}`}
                 className={cn(
-                  "flex h-full flex-col gap-0 border border-border p-4 shadow-none transition-[box-shadow,border-color]",
+                  "group/channel flex h-full flex-col gap-0 border border-border p-4 shadow-none transition-[box-shadow,border-color]",
                   status === "failed" && "border-danger/30",
                   status === "low" &&
                     "border-amber-300/90 bg-amber-50/30 shadow-[0_0_0_1px_rgba(245,158,11,0.16),0_18px_38px_-30px_rgba(245,158,11,0.72)] dark:border-amber-400/45 dark:bg-amber-950/10",
@@ -435,16 +436,19 @@ export function ChannelCards() {
                   >
                     {channelTypeLabel(c.type)}
                   </span>
-                  {siteHostLabel(c.site_url) ? (
+                  {siteLabel ? (
                     <a
                       href={c.site_url}
                       target="_blank"
                       rel="noreferrer"
-                      title={c.site_url}
-                      className="inline-flex max-w-[180px] items-center gap-1 truncate rounded bg-cyan-50 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-200/80 transition-[background-color,color,box-shadow] hover:bg-cyan-100 hover:text-cyan-800 hover:shadow-[0_0_0_2px_rgba(6,182,212,0.12)] dark:bg-cyan-950/30 dark:text-cyan-300 dark:ring-cyan-500/30 dark:hover:bg-cyan-900/40"
+                      title="打开原站点"
+                      aria-label="打开原站点"
+                      className="inline-flex max-w-6 items-center gap-1 overflow-hidden whitespace-nowrap rounded bg-cyan-50 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-200/80 transition-[max-width,background-color,color,box-shadow] duration-200 hover:max-w-[180px] hover:bg-cyan-100 hover:text-cyan-800 hover:shadow-[0_0_0_2px_rgba(6,182,212,0.12)] focus:max-w-[180px] focus:bg-cyan-100 focus:text-cyan-800 focus:outline-none focus:ring-cyan-300 group-hover/channel:max-w-[180px] group-focus-within/channel:max-w-[180px] dark:bg-cyan-950/30 dark:text-cyan-300 dark:ring-cyan-500/30 dark:hover:bg-cyan-900/40"
                     >
                       <ExternalLink className="size-3 shrink-0" />
-                      <span className="truncate">{siteHostLabel(c.site_url)}</span>
+                      <span className="truncate opacity-0 transition-opacity duration-150 group-hover/channel:opacity-100 group-focus-within/channel:opacity-100">
+                        {siteLabel}
+                      </span>
                     </a>
                   ) : null}
                   {!c.monitor_enabled ? (
