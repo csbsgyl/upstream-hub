@@ -441,7 +441,7 @@ export function ChannelCards() {
                       target="_blank"
                       rel="noreferrer"
                       title={c.site_url}
-                      className="inline-flex max-w-[180px] items-center gap-1 truncate rounded bg-muted/45 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border transition-colors hover:bg-brand/10 hover:text-brand hover:ring-brand/25"
+                      className="inline-flex max-w-[180px] items-center gap-1 truncate rounded bg-cyan-50 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-200/80 transition-[background-color,color,box-shadow] hover:bg-cyan-100 hover:text-cyan-800 hover:shadow-[0_0_0_2px_rgba(6,182,212,0.12)] dark:bg-cyan-950/30 dark:text-cyan-300 dark:ring-cyan-500/30 dark:hover:bg-cyan-900/40"
                     >
                       <ExternalLink className="size-3 shrink-0" />
                       <span className="truncate">{siteHostLabel(c.site_url)}</span>

@@ -96,3 +96,18 @@
 - frontend/lib/format.ts: adds a site URL display formatter that strips the protocol from labels.
 - progress.md: records this UI improvement and verification status.
 - Rollback: revert this change set or reset to the commit before this task.
+
+## 2026-06-20 - Task: Improve channel site link color
+### What was done
+- The channel origin site link now uses a brighter cyan badge style so it reads as a clickable site entry.
+- Added hover color and subtle focus-like shadow feedback without changing the channel card layout.
+
+### Testing
+- `git diff --check` passed.
+- `npm.cmd run lint` passed in `frontend`.
+- `npm.cmd run build` passed in `frontend`.
+
+### Notes
+- frontend/components/monitor/channel-cards.tsx: updates the origin site link badge color and hover treatment.
+- progress.md: records this visual polish and verification status.
+- Rollback: revert this change set or reset to the commit before this task.
